@@ -94,7 +94,9 @@ Signed in to https://app.streamingchasers.com with an API token.
 ```
 
 An API token may do anything you may, and works until you reset it with
-`streamingchasers account reset-token` or on your account page.
+`streamingchasers account reset-token` or on your account page. Because it
+is unscoped, a browser sign-in without `--admin` cannot read it:
+`streamingchasers account token` needs the token itself or `--admin`.
 
 ### Other servers
 
@@ -153,7 +155,7 @@ collaborators invited, on the web site.
 | `royalty-statements`, `royalty-records` | PRO statements and their lines |
 | `pro-data-dumps` | A PRO's export of work codes |
 | `periods`, `unpaid`, `batches`, `chase`, `rollups` | Chasing and claiming |
-| `cwr connections`, `tickets`, `files`, `acks` | CWR registration |
+| `cwr destinations`, `connections`, `tickets`, `files`, `acks` | CWR registration |
 | `pros`, `royalty-sources`, `sales-file-formats`, `works-file-formats`, `registration-types`, ... | Reference data, `list` and `get` |
 | `api` | Any request to the API |
 
@@ -237,14 +239,30 @@ one that does not is created (`--mode upsert`); `--mode create` and
 `--mode update` do only the one. A record that fails does not stop the
 rest; the failures are listed at the end and the exit code is 1.
 
-A work's writers and publishers go with `--data` or `--set`, as
-`works_writers_attributes` and `works_publishers_attributes`; see
-[docs/rails-handoff.md](docs/rails-handoff.md) for why there is no flag
-yet. Registration codes and alternative titles have flags:
+A work's credits, codes and alternative titles have flags, each a few
+fields joined by colons:
 
 ```console
-$ streamingchasers registration-types list
-$ streamingchasers works update W-1001 --code 3:123456789 --alt-title 1:"Windows Down"
+$ streamingchasers works create --id W-1001 --title "Highway Windows Down" \
+    --writer W-186:50 --writer W-187:50:1 --publisher P-2 --code 3:123456789
+$ streamingchasers works update W-1001 --alt-title 1:"Windows Down"
+```
+
+| | |
+|---|---|
+| `--writer EXT`, `--writer EXT:SHARE`, `--writer EXT:SHARE:DESIGNATION_ID` | A writer, by external ID. Shares left out are split evenly; `writer-designations list` shows the designations. |
+| `--publisher EXT[:SHARE[:TYPE_ID]]` | A publisher, likewise; `publisher-types list` |
+| `--code TYPE_ID:CODE` | A registration code; `registration-types list` shows the types, one per PRO |
+| `--alt-title TYPE_ID:TITLE` | An alternative title; `title-types list` |
+
+On an update they add to what the work has. Credits carry their own ids
+in `works get`, so to change or remove one send it back by id, with
+`--data` or `--set`; what `get` shows can be sent straight back:
+
+```console
+$ streamingchasers works get W-1001 -o json > work.json      # edit, then
+$ streamingchasers works update W-1001 --data @work.json
+$ streamingchasers works update W-1001 --set 'works_writers_attributes=[{"id": 7, "_destroy": true}]'
 ```
 
 ## Sales and royalty statements
@@ -295,9 +313,10 @@ exactly what `create` takes, less any rows you name with `--exclude`, and
 `create` asks before it goes ahead; a script passes `--yes`. A period that
 is no longer available is a conflict, exit code 7.
 
-Downloading the sheet with `batches csv` marks the batch as sent.
-`--variant missing-codes` downloads instead the companion sheet of rows
-left out for want of a work code, and does not. Add a code with
+Downloading the sheet with `batches csv` marks the batch as sent;
+`--no-mark-sent` downloads it to check first, and a later plain download
+marks it. `--variant missing-codes` downloads instead the companion sheet
+of rows left out for want of a work code, and never marks the batch. Add a code with
 `works update EXTERNAL_ID --code TYPE:CODE`; `batches missing-works`
 names the type.
 
@@ -310,6 +329,7 @@ block; `rollups get Series 600 --pro ASCAP` the lines and the works.
 ## CWR registration
 
 ```console
+$ streamingchasers cwr destinations list                          # the PRO servers
 $ streamingchasers cwr connections list
 $ streamingchasers cwr tickets candidates --connection 3          # works never sent
 $ streamingchasers cwr tickets queue --connection 3 --reason "New catalog" W-1 W-2
@@ -450,7 +470,9 @@ configuration directory and its own environment.
 **The Rails application is the specification. Where the fake and the
 application disagree, the fake is wrong.** The CLI has not yet been run
 against the application itself; [docs/rails-handoff.md](docs/rails-handoff.md)
-lists what building it found in the API, and what to try first.
+lists what building it found in the API,
+[docs/rails-handoff-response.md](docs/rails-handoff-response.md) how the
+application answered, and what to try first.
 
 Adding a command for a new kind of record is mostly a matter of describing
 it: see `writersResource` in `internal/cli/definitions.go`.

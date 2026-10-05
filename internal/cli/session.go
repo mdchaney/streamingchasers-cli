@@ -271,9 +271,18 @@ func (s *session) companyPath(ctx context.Context, segments ...any) (string, err
 	return api.Path(append([]any{"companies", company}, segments...)...), nil
 }
 
-// proID turns a PRO's ID or abbreviation into its ID.  The server finds
-// a PRO by its abbreviation at /pros/ABBR, but the claims endpoints
-// nested under a PRO take only its ID.
+// proSegment is a PRO as it goes into a path: its ID or its abbreviation,
+// both of which the server takes.
+func proSegment(selected string) (string, error) {
+	selected = strings.TrimSpace(selected)
+	if selected == "" {
+		return "", usagef("no PRO selected; pass --pro with its ID or abbreviation, such as --pro ASCAP")
+	}
+	return strings.ToUpper(selected), nil
+}
+
+// proID turns a PRO's ID or abbreviation into its ID, for the places
+// that take only the number: a query parameter or an upload's field.
 func (s *session) proID(ctx context.Context, selected string) (int64, error) {
 	selected = strings.TrimSpace(selected)
 	if selected == "" {

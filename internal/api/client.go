@@ -440,17 +440,9 @@ func (c *Client) List(ctx context.Context, path, key string, opts ListOptions) (
 }
 
 // ParsePage reads a list response: {key: [...], pagination: {...}}, the
-// pagination being optional, or a bare JSON array.
+// pagination being optional.
 func ParsePage(body []byte, key string) (*Page, error) {
 	page := &Page{Extra: map[string]json.RawMessage{}}
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) > 0 && trimmed[0] == '[' {
-		if err := json.Unmarshal(trimmed, &page.Items); err != nil {
-			return nil, fmt.Errorf("the server sent a list that cannot be read: %w", err)
-		}
-		return page, nil
-	}
-
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(body, &top); err != nil {
 		return nil, fmt.Errorf("the server sent a list that is not a JSON object: %w", err)

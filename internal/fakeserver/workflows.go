@@ -440,7 +440,13 @@ func (s *Server) claimsUnderPro(req *request, rest []string) {
 		}
 		return
 	}
+	// FlexibleFinder: by ID, or by abbreviation in any case.
 	pro := s.pro(rest[0])
+	for _, candidate := range s.Pros {
+		if pro == nil && strings.EqualFold(str(candidate["abbreviation"]), rest[0]) {
+			pro = candidate
+		}
+	}
 	if pro == nil {
 		notFound(req.w)
 		return
@@ -685,7 +691,9 @@ func (s *Server) batches(req *request, rest []string) {
 				}
 			}
 		}
-		batch["sent_at"] = time.Now().Format(time.RFC3339)
+		if req.r.URL.Query().Get("mark_sent") != "0" && batch["sent_at"] == nil {
+			batch["sent_at"] = time.Now().Format(time.RFC3339)
+		}
 		sendFile(req.w, fmt.Sprintf("%s_%s_batch_%v.csv", strings.ReplaceAll(company.Name, " ", "_"), pro["abbreviation"], batch["id"]), "text/csv; charset=utf-8", []byte(body))
 	default:
 		routingError(req.w)

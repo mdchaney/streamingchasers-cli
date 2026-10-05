@@ -16,6 +16,7 @@ are queued for registration on a connection as tickets, a file is made
 from the queued works and sent, and the PRO's acknowledgments come back
 as ack files.
 
+  streamingchasers cwr destinations list                    the PRO servers
   streamingchasers cwr connections list
   streamingchasers cwr tickets candidates --connection 3    works never sent
   streamingchasers cwr tickets queue --connection 3 --reason "New catalog" W-1 W-2
@@ -51,7 +52,7 @@ func cwrConnectionsResource() *resource {
 			{Header: "QUEUED", Key: "queued_tickets"},
 		},
 		fields: []field{
-			{flag: "destination", key: "cwr_destination_id", kind: kindInt, usage: "ID of the PRO delivery server (required; the web site lists them)"},
+			{flag: "destination", key: "cwr_destination_id", kind: kindInt, usage: "ID of the PRO delivery server (required; see 'streamingchasers cwr destinations list')"},
 			{flag: "username", key: "server_username", usage: "user name on the PRO server (required)"},
 			{flag: "password", key: "server_password", kind: kindText, usage: "password on the PRO server (required to create); @FILE keeps it out of your shell history"},
 			{flag: "outbound", key: "outbound_directory", usage: "directory on the PRO server to put files in"},
@@ -69,9 +70,25 @@ func cwrConnectionsResource() *resource {
 	}
 }
 
+func cwrDestinationsResource() *resource {
+	return &resource{
+		name: "destinations", singular: "cwr_destination", label: "CWR destination", segment: "cwr_destinations",
+		short:    "The PRO delivery servers a connection can point at",
+		scope:    scopeGlobal,
+		idArg:    "ID",
+		readOnly: true,
+		noGet:    true,
+		columns: []output.Column{
+			{Header: "ID", Key: "id"},
+			{Header: "NAME", Key: "name", Max: 40},
+			{Header: "PRO", Key: "pro"},
+		},
+	}
+}
+
 func (a *App) newCwrCmd() *cobra.Command {
 	cmd := group("cwr", "Register works with PROs by CWR", cwrLong)
-	cmd.AddCommand(a.newCwrConnectionsCmd(), a.newCwrTicketsCmd(), a.newCwrFilesCmd(), a.newCwrAcksCmd())
+	cmd.AddCommand(a.newCwrConnectionsCmd(), a.newResourceCmd(cwrDestinationsResource()), a.newCwrTicketsCmd(), a.newCwrFilesCmd(), a.newCwrAcksCmd())
 	return cmd
 }
 

@@ -116,6 +116,9 @@ type resource struct {
 	updateExample string
 	// adminScope says that changing the resource takes catalog_admin.
 	adminScope bool
+	// prepare, if set, turns a record as the API serves it into one it
+	// takes, after the read-only keys are dropped.
+	prepare func(record *output.Record)
 }
 
 func (r *resource) plural() string {
@@ -565,6 +568,9 @@ func prepareRecord(record *output.Record, r *resource) *output.Record {
 			}
 			prepared.Delete("id")
 		}
+	}
+	if r.prepare != nil {
+		r.prepare(prepared)
 	}
 	return prepared
 }

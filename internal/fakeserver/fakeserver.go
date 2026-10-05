@@ -245,17 +245,18 @@ func (s *Server) seed() {
 			{"id": 4, "name": "SACEM codes", "description": "Work codes from SACEM", "requires_pro": true, "file_extension": "csv", "format_type": "codes"},
 		},
 		"registration_types": {
-			{"id": 3, "name": "ASCAP Work ID", "pro_id": 10, "description": "ASCAP's work identifier", "work_id_description": "the ASCAP Work ID"},
-			{"id": 4, "name": "BMI Work ID", "pro_id": 21, "description": "BMI's work identifier", "work_id_description": "the BMI Work #"},
+			{"id": 3, "name": "ASCAP Work ID", "pro_id": 10, "work_id_description": "the ASCAP Work ID", "validation_regexp": "^\\d{9,}$"},
+			{"id": 4, "name": "BMI Work ID", "pro_id": 21, "work_id_description": "the BMI Work #", "validation_regexp": nil},
 		},
 		"writer_designations":  {{"id": 1, "code": "C", "description": "Composer"}, {"id": 2, "code": "A", "description": "Author"}},
 		"publisher_types":      {{"id": 1, "code": "E", "description": "Original publisher"}},
 		"title_types":          {{"id": 1, "code": "AT", "description": "Alternative title", "definition": "Another title"}},
 		"cis_languages":        {{"id": 1, "code": "EN", "name": "English"}, {"id": 2, "code": "FR", "name": "French"}},
 		"tis_territories":      {{"id": 1, "tis_a": 2136, "tis_a_ext": nil, "name": "World"}, {"id": 2, "tis_a": 840, "tis_a_ext": nil, "name": "United States"}},
-		"tis_territory_types":  {{"id": 1, "name": "Country"}},
+		"tis_territory_types":  {{"id": 1, "name": "Country", "abbreviation": "C"}},
 		"production_companies": {{"id": 1, "name": "Big Studio"}},
-		"streamers":            {{"id": 1, "name": "Netflix"}, {"id": 2, "name": "Hulu"}},
+		"streamers":            {{"id": 1, "name": "Netflix", "tracked": true}, {"id": 2, "name": "Hulu", "tracked": false}},
+		"cwr_destinations":     {{"id": 2, "name": "ASCAP Delivery", "pro": "ASCAP"}},
 		"movies":               {{"id": 300, "title": "Big Movie", "imdb_id": "tt0000300", "reelgood_id": nil}},
 		"series":               {{"id": 500, "title": "Big Series", "imdb_id": "tt0000500", "reelgood_id": nil}, {"id": 600, "title": "Bundle Show", "imdb_id": "tt0000600", "reelgood_id": nil}},
 		"episodes":             {{"id": 5001, "title": "Pilot", "imdb_id": "tt0005001", "reelgood_id": nil, "season_number": 1, "episode_number": 1, "series_id": 500}},
@@ -413,9 +414,18 @@ func forbidden(w http.ResponseWriter) {
 	message(w, http.StatusForbidden, "Forbidden")
 }
 
-// invalid is api/shared/validation_errors: the full messages.
+// invalid is api/shared/validation_errors: errors.to_hash(true), a map
+// from attribute to its full messages.  The attribute is taken to be
+// the first word of the message, in lower case; a message such as
+// "Last name can't be blank" lands under "last", which is near enough
+// for a client that reads the messages.
 func invalid(w http.ResponseWriter, problems ...string) {
-	writeJSON(w, http.StatusUnprocessableEntity, record{"message": "Validation failed", "errors": problems})
+	errors := map[string][]string{}
+	for _, problem := range problems {
+		attribute := strings.ToLower(strings.SplitN(problem, " ", 2)[0])
+		errors[attribute] = append(errors[attribute], problem)
+	}
+	writeJSON(w, http.StatusUnprocessableEntity, record{"message": "Validation failed", "errors": errors})
 }
 
 // toInt reads an integer the way Rails casts a parameter: from a JSON

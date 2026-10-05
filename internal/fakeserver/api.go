@@ -191,10 +191,25 @@ func (s *Server) renderMe(req *request, user *User) record {
 	if companies == nil {
 		companies = []record{}
 	}
-	return record{
-		"id": user.ID, "name": user.Name, "email_address": user.Email, "active": true, "auth_token": user.APIToken,
+	out := record{
+		"id": user.ID, "name": user.Name, "email_address": user.Email, "active": true,
 		"created_at": seedTime, "updated_at": seedTime, "companies": companies,
 	}
+	// The account token is unscoped, so a read-only OAuth token may not
+	// read it; the account token itself and catalog_admin tokens may.
+	if req.scopes == nil || containsScope(req.scopes, "catalog_admin") {
+		out["auth_token"] = user.APIToken
+	}
+	return out
+}
+
+func containsScope(scopes []string, wanted string) bool {
+	for _, scope := range scopes {
+		if scope == wanted {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) users(req *request, rest []string) {
@@ -783,7 +798,9 @@ func (s *Server) processSheet(req *request) {
 }
 
 func (s *Server) catalogs(req *request, rest []string) {
-	// The real controller checks no role: any collaborator may do anything.
+	if !req.authorize(Viewer) {
+		return
+	}
 	company := req.company
 	render := func(c record) record {
 		count := 0
@@ -792,30 +809,34 @@ func (s *Server) catalogs(req *request, rest []string) {
 				count++
 			}
 		}
-		return record{"external_id": c["external_id"], "name": c["name"], "works_count": count, "created_at": c["created_at"], "updated_at": c["updated_at"]}
+		return record{"id": c["external_id"], "external_id": c["external_id"], "name": c["name"], "works_count": count, "created_at": c["created_at"], "updated_at": c["updated_at"]}
 	}
 	if len(rest) == 0 {
 		switch req.r.Method {
 		case http.MethodGet:
-			out := []record{}
+			var out []record
 			for _, c := range company.Catalogs {
 				out = append(out, render(c))
 			}
 			sortBy(out, "name")
-			writeJSON(req.w, http.StatusOK, record{"catalogs": out})
+			page, pagination := paginate(req.r, out, 0)
+			writeJSON(req.w, http.StatusOK, record{"catalogs": page, "pagination": pagination})
 		case http.MethodPost:
+			if !req.authorize(Editor) {
+				return
+			}
 			params, ok := req.wrapped("catalog")
 			if !ok {
 				return
 			}
 			if blank(params["name"]) {
-				writeJSON(req.w, http.StatusUnprocessableEntity, record{"errors": []string{"Name can't be blank"}})
+				invalid(req.w, "Name can't be blank")
 				return
 			}
 			c := record{"external_id": params["external_id"], "name": params["name"]}
 			stamp(c, false)
 			company.Catalogs = append(company.Catalogs, c)
-			writeJSON(req.w, http.StatusCreated, record{"catalog": render(c)})
+			writeJSON(req.w, http.StatusCreated, render(c))
 		default:
 			routingError(req.w)
 		}
@@ -829,22 +850,28 @@ func (s *Server) catalogs(req *request, rest []string) {
 	c := company.Catalogs[i]
 	switch req.r.Method {
 	case http.MethodGet:
-		writeJSON(req.w, http.StatusOK, record{"catalog": render(c)})
+		writeJSON(req.w, http.StatusOK, render(c))
 	case http.MethodPatch, http.MethodPut:
+		if !req.authorize(Editor) {
+			return
+		}
 		params, ok := req.wrapped("catalog")
 		if !ok {
 			return
 		}
 		if name, has := params["name"]; has && blank(name) {
-			writeJSON(req.w, http.StatusUnprocessableEntity, record{"errors": []string{"Name can't be blank"}})
+			invalid(req.w, "Name can't be blank")
 			return
 		}
 		for key, value := range params {
 			c[key] = value
 		}
 		stamp(c, false)
-		writeJSON(req.w, http.StatusOK, record{"catalog": render(c)})
+		writeJSON(req.w, http.StatusOK, render(c))
 	case http.MethodDelete:
+		if !req.authorize(Editor) {
+			return
+		}
 		company.Catalogs = append(company.Catalogs[:i], company.Catalogs[i+1:]...)
 		req.w.WriteHeader(http.StatusNoContent)
 	default:
@@ -900,7 +927,7 @@ func (s *Server) renderWork(req *request, w record, full bool) record {
 		if i := findExternal(req.company.Publishers, str(item["publisher_external_id"])); i >= 0 {
 			name = req.company.Publishers[i]["legal_name"]
 		}
-		publishers = append(publishers, record{"publisher_id": item["publisher_external_id"], "publisher_name": name, "share": item["share"], "publisher_url": fmt.Sprintf("%s/companies/%d/publishers/%v", req.base, req.company.ID, item["publisher_external_id"])})
+		publishers = append(publishers, record{"id": item["id"], "publisher_id": item["publisher_external_id"], "publisher_name": name, "publisher_type_id": item["publisher_type_id"], "share": item["share"], "publisher_url": fmt.Sprintf("%s/companies/%d/publishers/%v", req.base, req.company.ID, item["publisher_external_id"])})
 	}
 	out["publishers"] = publishers
 	writers := []record{}
@@ -910,7 +937,7 @@ func (s *Server) renderWork(req *request, w record, full bool) record {
 			writer := req.company.Writers[i]
 			name = strings.TrimSpace(str(writer["first_name"]) + " " + str(writer["last_name"]))
 		}
-		writers = append(writers, record{"writer_id": item["writer_external_id"], "writer_name": name, "share": item["share"], "writer_url": fmt.Sprintf("%s/companies/%d/writers/%v", req.base, req.company.ID, item["writer_external_id"])})
+		writers = append(writers, record{"id": item["id"], "writer_id": item["writer_external_id"], "writer_name": name, "writer_designation_id": item["writer_designation_id"], "share": item["share"], "writer_url": fmt.Sprintf("%s/companies/%d/writers/%v", req.base, req.company.ID, item["writer_external_id"])})
 	}
 	out["writers"] = writers
 	return out
@@ -975,6 +1002,10 @@ func (s *Server) works(req *request, rest []string) {
 			}
 			w := record{"title": nil, "cis_language_id": nil, "catalog": nil, "works_alt_titles": []any{}, "registration_codes": []any{}, "works_publishers": []any{}, "works_writers": []any{}, "include_in_cwr": false}
 			if problems := s.applyWork(company, w, params, -1); len(problems) > 0 {
+				if problems[0] == notFoundSentinel {
+					notFound(req.w)
+					return
+				}
 				invalid(req.w, problems...)
 				return
 			}
@@ -1013,6 +1044,10 @@ func (s *Server) works(req *request, rest []string) {
 		}
 		updated := copyRecord(w)
 		if problems := s.applyWork(company, updated, params, i); len(problems) > 0 {
+			if problems[0] == notFoundSentinel {
+				notFound(req.w)
+				return
+			}
 			invalid(req.w, problems...)
 			return
 		}
@@ -1038,6 +1073,28 @@ func (s *Server) applyWork(company *Company, w record, params record, self int) 
 			w[key] = value
 		}
 	}
+	// Credits name writers and publishers by external ID, as writer_id
+	// or writer_external_id; an unknown one is a 404 (find_by!).
+	for _, kind := range []string{"writer", "publisher"} {
+		for _, item := range listOfRecords(params["works_"+kind+"s_attributes"]) {
+			externalID := str(item[kind+"_external_id"])
+			if externalID == "" {
+				externalID = str(item[kind+"_id"])
+			}
+			if externalID == "" {
+				continue
+			}
+			list := company.Writers
+			if kind == "publisher" {
+				list = company.Publishers
+			}
+			if findExternal(list, externalID) < 0 {
+				return []string{notFoundSentinel}
+			}
+			item[kind+"_external_id"] = externalID
+			delete(item, kind+"_id")
+		}
+	}
 	nestedKeys := map[string]string{"works_alt_titles_attributes": "works_alt_titles", "registration_codes_attributes": "registration_codes", "works_publishers_attributes": "works_publishers", "works_writers_attributes": "works_writers"}
 	var problems []string
 	for param, key := range nestedKeys {
@@ -1049,6 +1106,27 @@ func (s *Server) applyWork(company *Company, w record, params record, self int) 
 			if key == "works_alt_titles" && blank(entry["title"]) {
 				problems = append(problems, "Works alt titles is invalid")
 			}
+			// An entry with an id updates (or, with _destroy, removes)
+			// the row it names, as accepts_nested_attributes_for does.
+			if entry["id"] != nil {
+				existing := listOfAny(w[key])
+				var kept []any
+				for _, row := range existing {
+					if r, ok := row.(map[string]any); ok && mustInt(r["id"]) == mustInt(entry["id"]) {
+						if entry["_destroy"] == true || str(entry["_destroy"]) == "1" || str(entry["_destroy"]) == "true" {
+							continue
+						}
+						for k, v := range entry {
+							if k != "_destroy" {
+								r[k] = v
+							}
+						}
+					}
+					kept = append(kept, row)
+				}
+				w[key] = kept
+				continue
+			}
 			entry["id"] = s.id()
 			w[key] = append(listOfAny(w[key]), entry)
 		}
@@ -1059,6 +1137,10 @@ func (s *Server) applyWork(company *Company, w record, params record, self int) 
 	}
 	return problems
 }
+
+// notFoundSentinel is what applyWork returns when a credit names a
+// writer or publisher that is not there: a 404 rather than a 422.
+const notFoundSentinel = "\x00not found"
 
 func listOfAny(v any) []any {
 	list, _ := v.([]any)
@@ -1148,14 +1230,17 @@ func (s *Server) sales(req *request, rest []string, upload *Upload) {
 			for key, value := range params {
 				sale[key] = value
 			}
-			// The server takes the work's database ID; here the works
-			// are numbered by their place, from 1.
-			id := mustInt(params["work_id"])
-			if id < 1 || int(id) > len(company.Works) {
+			// work_id is the work's external ID, found within the company.
+			if blank(params["work_id"]) {
 				invalid(req.w, "Work must exist")
 				return
 			}
-			sale["work_external_id"] = company.Works[id-1]["external_id"]
+			if findExternal(company.Works, str(params["work_id"])) < 0 {
+				notFound(req.w)
+				return
+			}
+			sale["work_external_id"] = str(params["work_id"])
+			delete(sale, "work_id")
 			stamp(sale, false)
 			company.Sales = append(company.Sales, sale)
 			writeJSON(req.w, http.StatusCreated, s.renderSale(req, sale, true))
@@ -1301,11 +1386,17 @@ func (s *Server) agreements(req *request, rest []string, kind string, list *[]re
 		case http.MethodGet:
 			var out []record
 			query := req.r.URL.Query()
+			filterParam := func(name string) string {
+				if v := query.Get("q[" + name + "]"); v != "" {
+					return v
+				}
+				return query.Get(name)
+			}
 			for _, a := range *list {
-				if v := query.Get("assignor_external_id"); v != "" && str(a["assignor_external_id"]) != v {
+				if v := filterParam("assignor_external_id"); v != "" && str(a["assignor_external_id"]) != v {
 					continue
 				}
-				if v := query.Get("assignee_external_id"); v != "" && str(a["assignee_external_id"]) != v {
+				if v := filterParam("assignee_external_id"); v != "" && str(a["assignee_external_id"]) != v {
 					continue
 				}
 				out = append(out, s.renderAgreement(req, a, kind))
@@ -1405,8 +1496,9 @@ func (s *Server) pros(req *request, rest []string) {
 }
 
 // paginatedReference says which reference lists come with a pagination
-// block; works_file_formats comes as a bare array.
-var paginatedReference = map[string]bool{"tis_territories": true, "cis_languages": true, "title_types": true, "writer_designations": true, "publisher_types": true, "movies": true, "series": true, "episodes": true}
+// block; royalty_sources and sales_file_formats come whole.
+var paginatedReference = map[string]bool{"tis_territories": true, "cis_languages": true, "title_types": true, "writer_designations": true, "publisher_types": true, "movies": true, "series": true, "episodes": true,
+	"works_file_formats": true, "registration_types": true, "streamers": true, "production_companies": true, "tis_territory_types": true, "cwr_destinations": true}
 
 func (s *Server) reference(req *request, kind string, list []record, rest []string) {
 	if req.r.Method != http.MethodGet {
@@ -1414,10 +1506,6 @@ func (s *Server) reference(req *request, kind string, list []record, rest []stri
 		return
 	}
 	if len(rest) == 0 {
-		if kind == "works_file_formats" {
-			writeJSON(req.w, http.StatusOK, list)
-			return
-		}
 		if !paginatedReference[kind] {
 			writeJSON(req.w, http.StatusOK, record{kind: list})
 			return

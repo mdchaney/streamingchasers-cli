@@ -2,12 +2,25 @@
 
 This is a request from the command-line client to whoever is working on
 the Rails application (`test.streamingchasers.com`). It is meant to be
-read on its own. The CLI was built against `public/api/v1/openapi.yaml`
-and the `app/views/api/v1` jbuilder views, with an in-memory fake of the
-API for its tests; it has **not yet been run against the application**
-(no Streaming Chasers server was running on this machine). The first
-thing to do with it is that, and this list is what to expect to trip
-over.
+read on its own. **It has been answered**: see
+[rails-handoff-response.md](rails-handoff-response.md). Everything below
+was addressed on the application's `mdc` branch (commits `b871f06`,
+`8c14ccf`, `f496920`), and the CLI and its fake were changed to match on
+5 October 2026:
+
+| # | Asked for | The CLI now |
+|---|---|---|
+| 1 | Credits and sales by external id | `works create/update --writer EXT[:SHARE[:DESIGNATION]]`, `--publisher`; credits round-trip by id through `--data`; `sales create --work EXT` |
+| 2 | The four missing controllers | `registration-types`, `streamers`, `production-companies`, `tis-territory-types` read the new fields |
+| 3 | Catalogs normalized | The wrapper, the bare `errors` list and the missing pagination are no longer special-cased |
+| 4 | Spec vs. code | `errors` read as a map of attribute to messages; `works_file_formats` as an envelope; agreement filters sent as `q[...]` |
+| 5 | PRO by abbreviation | `--pro ASCAP` goes straight into the path; the lookup request is gone |
+| 6 | CWR destinations | `streamingchasers cwr destinations list` |
+| 7 | `auth_token` scoping, `mark_sent=0` | `account token` says when it needs `--admin`; `batches csv --no-mark-sent` |
+
+The CLI has still **not been run against the application itself**; the
+section at the end says what to try first. What follows is the request
+as it was made, kept for the record.
 
 Ordered by how much they matter to a CLI user.
 
@@ -126,25 +139,21 @@ lists them" for now.
 - `royalty_statements` has no `destroy`; the spec agrees. Noted in case
   that is not intentional.
 
-## What the CLI does about each, today
-
-| # | CLI behaviour |
-|---|---|
-| 1 | `works create/update/import` take `--code` and `--alt-title`; credits only via `--data`/`--set`. `sales create --work-id` passes the database ID through. |
-| 2 | Commands exist and work against the fake; against the app they will 404/500 until the controllers exist. |
-| 3 | `catalogs` unwraps `{"catalog": ...}`, reads `errors` without a message, lists without pagination. |
-| 4 | `api.ParsePage` accepts a bare array, a missing `pagination` block, and `errors` as list or map. |
-| 5 | `--pro` resolves an abbreviation with `GET /pros/ABBR` first. |
-| 6 | `--destination ID` only. |
-
 ## What to try first against the application
+
+The shapes that changed in answer to this note come first: credits and
+sales by external id, the four new reference lists, catalogs, and the
+validation-error map.
 
 ```console
 $ streamingchasers auth login --host localhost:3000            # the OAuth flow end to end
 $ streamingchasers companies list && streamingchasers companies use <name>
 $ streamingchasers works list --title <word> ; writers list ; publishers list ; catalogs list
-$ streamingchasers works-file-formats list ; registration-types list   # #2
-$ streamingchasers works create --id CLI-1 --title "CLI test" --code <type>:<code>
+$ streamingchasers works-file-formats list ; registration-types list ; cwr destinations list
+$ streamingchasers works create --id CLI-1 --title "CLI test" --writer <ext>:100 --publisher <ext> --code <type>:<code>
+$ streamingchasers works get CLI-1 -o json | streamingchasers works update CLI-1 --data -   # credits round-trip
+$ streamingchasers sales create --work CLI-1 --film-title "CLI test film"
+$ streamingchasers writers create --id CLI-1                    # the validation-error map
 $ streamingchasers works-uploads create --file <csv> --format <id> --wait ; works-uploads report <id>
 $ streamingchasers royalty-statements create --file <csv> --source <name> --wait ; royalty-statements streamers <id>
 $ streamingchasers chase list --pro ASCAP ; unpaid list --pro ASCAP ; periods list --pro ASCAP

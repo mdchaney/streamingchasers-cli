@@ -56,8 +56,9 @@ func newError(method, path string, resp *Response) *Error {
 	return e
 }
 
-// problems reads the errors of a 422, which come as a list of messages
-// or, from some endpoints, as a map from field to its messages.
+// problems reads the errors of a 422: a map from attribute to its full
+// messages ("Title can't be blank"), in attribute order; or, from an
+// older server, a flat list of messages.
 func problems(raw json.RawMessage) []string {
 	var list []string
 	if json.Unmarshal(raw, &list) == nil {
@@ -73,13 +74,7 @@ func problems(raw json.RawMessage) []string {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		for _, message := range fields[name] {
-			if name == "base" {
-				list = append(list, message)
-			} else {
-				list = append(list, name+" "+message)
-			}
-		}
+		list = append(list, fields[name]...)
 	}
 	return list
 }

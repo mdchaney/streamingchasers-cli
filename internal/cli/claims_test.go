@@ -37,7 +37,7 @@ func TestClaimsLoop(t *testing.T) {
 	r = h.ok("batches", "create", "--pro", "ASCAP", "--period", "12", "--notes", "Q1", "--exclude", "7002", "--yes")
 	want(t, r.stderr, "Made batch", "with 1 rows. Left out: 1 excluded by you, 1 for missing codes, 1 rolled up.", "streamingchasers batches csv")
 	want(t, r.stdout, "added_count:", "1")
-	body := h.lastBody("POST", "/api/v1/companies/2/pros/10/broadcast_delivery_batches")
+	body := h.lastBody("POST", "/api/v1/companies/2/pros/ASCAP/broadcast_delivery_batches")
 	if excluded := body["excluded_broadcasts_pros_sale_ids"].([]any); len(excluded) != 1 || excluded[0] != float64(7002) {
 		t.Errorf("unexpected body: %v", body)
 	}
@@ -54,8 +54,11 @@ func TestClaimsLoop(t *testing.T) {
 	want(t, h.ok("batches", "get", id).stdout, "payment_period:", "2026 Q1", "broadcasts_count:")
 	want(t, h.ok("batches", "list", "--pro", "BMI").stderr, "No batches match.")
 
-	r = h.ok("batches", "csv", id)
+	r = h.ok("batches", "csv", id, "--no-mark-sent")
 	want(t, r.stdout, "work,code,production,aired,notes", "W-999,123456789,Big Movie")
+	unwanted(t, r.stderr, "marked as sent")
+	want(t, h.ok("batches", "get", id, "-o", "json").stdout, `"sent_at": null`)
+	r = h.ok("batches", "csv", id)
 	want(t, r.stderr, "Batch "+id+" is now marked as sent.")
 	want(t, h.ok("batches", "get", id, "-o", "json").stdout, `"sent_at": "20`)
 	r = h.ok("batches", "csv", id, "--no-notes", "--sort", "chase-money")
@@ -77,8 +80,12 @@ func TestChaseScores(t *testing.T) {
 	want(t, r.stderr, "Sorted by money. Hidden: 1 rolled up, 1 fully paid.")
 	want(t, r.stdout, "SERIES", "TITLE", "MONEY", "UNPAID", "500", "Big Series", "120.5", "2")
 	unwanted(t, r.stdout, "Bundle Show", "Paid Off")
-	h.ok("chase", "list", "--pro", "ASCAP", "--sort", "unpaid")
-	if req := h.lastRequest("GET", "/api/v1/companies/2/pros/10/series_chase_scores"); !strings.Contains(req.Query, "sort=unpaid") {
+	h.ok("chase", "list", "--pro", "ascap", "--sort", "unpaid")
+	// The abbreviation goes straight into the path; no lookup first.
+	if n := h.server.CountRequests("GET", "/api/v1/pros/"); n != 0 {
+		t.Errorf("%d lookups of the PRO", n)
+	}
+	if req := h.lastRequest("GET", "/api/v1/companies/2/pros/ASCAP/series_chase_scores"); !strings.Contains(req.Query, "sort=unpaid") {
 		t.Errorf("query = %q", req.Query)
 	}
 	want(t, h.ok("chase", "get", "500", "--pro", "ASCAP").stdout, "series:", "Big Series", "money_observed:")

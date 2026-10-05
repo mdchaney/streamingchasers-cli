@@ -105,13 +105,12 @@ non-controlled one, also makes the agreements the server derives from it.`,
 
 func catalogsResource() *resource {
 	return &resource{
-		name:      "catalogs",
-		aliases:   []string{"catalog"},
-		singular:  "catalog",
-		label:     "catalog",
-		segment:   "catalogs",
-		unwrapKey: "catalog",
-		short:     "Manage a company's catalogs",
+		name:     "catalogs",
+		aliases:  []string{"catalog"},
+		singular: "catalog",
+		label:    "catalog",
+		segment:  "catalogs",
+		short:    "Manage a company's catalogs",
 		long: `Manage a company's catalogs: named groups of works.
 
 Catalogs are addressed by their external IDs.`,
@@ -120,7 +119,7 @@ Catalogs are addressed by their external IDs.`,
 		idKey:   "external_id",
 		idUsage: "your ID for the catalog",
 		columns: []output.Column{
-			{Header: "ID", Key: "external_id"},
+			{Header: "ID", Key: "id"},
 			{Header: "NAME", Key: "name", Max: 50},
 			{Header: "WORKS", Key: "works_count"},
 			{Header: "CREATED", Value: timestamp("created_at")},
@@ -147,14 +146,20 @@ registration codes, writers and publishers.
 Works are addressed by their external IDs, which you choose when you
 create them: letters, numbers, hyphens and underscores.
 
-Alternative titles and registration codes can be given with flags:
+Credits, alternative titles and registration codes can be given with
+flags, each as fields joined by colons:
 
-  --alt-title TITLE_TYPE_ID:TITLE     'streamingchasers title-types list' shows the types
-  --code REGISTRATION_TYPE_ID:CODE    'streamingchasers registration-types list' shows them
+  --writer EXTERNAL_ID[:SHARE[:DESIGNATION_ID]]  a writer, by their external ID; shares left
+                                                 out are split evenly; 'writer-designations list'
+  --publisher EXTERNAL_ID[:SHARE[:TYPE_ID]]      a publisher, likewise; 'publisher-types list'
+  --alt-title TITLE_TYPE_ID:TITLE                'streamingchasers title-types list' shows the types
+  --code REGISTRATION_TYPE_ID:CODE               'streamingchasers registration-types list' shows them
 
-On an update they are added to what the work has. Writers and publishers
-are set with --data or --set, as works_writers_attributes and
-works_publishers_attributes, with the fields the API documents.
+On an update they are added to what the work has. To change or remove a
+credit, send it by its own id with --data or --set, as the API's
+works_writers_attributes and works_publishers_attributes take it: what
+'works get' shows can be sent straight back, and {"id": 7, "_destroy": true}
+removes one.
 
 To load a whole catalog from CSV, see 'streamingchasers works-uploads'.`,
 		scope:      scopeCompany,
@@ -176,10 +181,24 @@ To load a whole catalog from CSV, see 'streamingchasers works-uploads'.`,
 			{flag: "external-id", param: "q[external_id]", usage: "list the work with this external ID"},
 		},
 		flags: func(cmd *cobra.Command) {
+			cmd.Flags().StringArray("writer", nil, "a writer credit, as EXTERNAL_ID, EXTERNAL_ID:SHARE or EXTERNAL_ID:SHARE:DESIGNATION_ID (may be repeated)")
+			cmd.Flags().StringArray("publisher", nil, "a publisher credit, as EXTERNAL_ID, EXTERNAL_ID:SHARE or EXTERNAL_ID:SHARE:TYPE_ID (may be repeated)")
 			cmd.Flags().StringArray("alt-title", nil, "an alternative title, as TITLE_TYPE_ID:TITLE (may be repeated)")
 			cmd.Flags().StringArray("code", nil, "a registration code, as REGISTRATION_TYPE_ID:CODE (may be repeated)")
 		},
+		prepare: prepareWork,
 		apply: func(a *App, cmd *cobra.Command, body *output.Record) error {
+			for _, kind := range []string{"writer", "publisher"} {
+				if !cmd.Flags().Changed(kind) {
+					continue
+				}
+				values, _ := cmd.Flags().GetStringArray(kind)
+				credits, err := parseCredits(kind, values)
+				if err != nil {
+					return err
+				}
+				body.Set("works_"+kind+"s_attributes", credits)
+			}
 			if cmd.Flags().Changed("alt-title") {
 				values, _ := cmd.Flags().GetStringArray("alt-title")
 				list, err := parsePairs("alt-title", values, "title_type_id", "title")
@@ -198,11 +217,106 @@ To load a whole catalog from CSV, see 'streamingchasers works-uploads'.`,
 			}
 			return nil
 		},
-		createExample: `  streamingchasers works create --id W-1001 --title "Highway Windows Down" --code 3:123456789
+		createExample: `  streamingchasers works create --id W-1001 --title "Highway Windows Down" \
+      --writer W-186:50 --writer W-187:50 --publisher P-2 --code 3:123456789
   streamingchasers works create --data @work.json`,
 		updateExample: `  streamingchasers works update W-1001 --title "Highway Windows Down (Reprise)"
-  streamingchasers works update W-1001 --alt-title 2:"Windows Down"`,
+  streamingchasers works update W-1001 --alt-title 2:"Windows Down"
+  streamingchasers works update W-1001 --set 'works_writers_attributes=[{"id": 7, "_destroy": true}]'`,
 	}
+}
+
+// creditKeys are the keys a credit is sent under, by kind.
+var creditKeys = map[string][3]string{
+	"writer":    {"writer_id", "share", "writer_designation_id"},
+	"publisher": {"publisher_id", "share", "publisher_type_id"},
+}
+
+// parseCredits reads --writer and --publisher values into the lists the
+// API takes.  Shares left out are split evenly.
+func parseCredits(kind string, values []string) ([]any, error) {
+	type credit struct{ id, share, role string }
+	var credits []credit
+	shared := 0
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		parts := strings.SplitN(value, ":", 3)
+		for i := range parts {
+			parts[i] = strings.TrimSpace(parts[i])
+		}
+		c := credit{id: parts[0]}
+		if c.id == "" {
+			return nil, usagef("--%s takes EXTERNAL_ID, EXTERNAL_ID:SHARE or EXTERNAL_ID:SHARE:ID, not %q", kind, value)
+		}
+		if len(parts) > 1 && parts[1] != "" {
+			number, err := strconv.ParseFloat(parts[1], 64)
+			if err != nil || number < 0 || number > 100 {
+				return nil, usagef("--%s %q: the share must be a number from 0 to 100", kind, value)
+			}
+			c.share = parts[1]
+			shared++
+		}
+		if len(parts) > 2 && parts[2] != "" {
+			if _, err := strconv.ParseInt(parts[2], 10, 64); err != nil {
+				return nil, usagef("--%s %q: the last part must be an ID, a number", kind, value)
+			}
+			c.role = parts[2]
+		}
+		credits = append(credits, c)
+	}
+	if shared != 0 && shared != len(credits) {
+		return nil, usagef("give every --%s a share or none of them", kind)
+	}
+	keys := creditKeys[kind]
+	list := make([]any, 0, len(credits))
+	for _, c := range credits {
+		if shared == 0 {
+			c.share = strconv.FormatFloat(100/float64(len(credits)), 'f', 2, 64)
+		}
+		entry := output.NewRecord()
+		entry.Set(keys[0], c.id)
+		entry.Set(keys[1], json.Number(c.share))
+		if c.role != "" {
+			entry.Set(keys[2], json.Number(c.role))
+		}
+		list = append(list, entry)
+	}
+	return list, nil
+}
+
+// prepareWork turns a work as 'works get' shows it into one the API
+// takes: the credits move to works_writers_attributes and
+// works_publishers_attributes, keeping their ids so that they update
+// rather than add.  Alternative titles and codes are shown by name and
+// cannot be sent back.
+func prepareWork(work *output.Record) {
+	for kind, keys := range creditKeys {
+		shown, ok := work.Value(kind + "s").([]any)
+		work.Delete(kind + "s")
+		if !ok {
+			continue
+		}
+		var credits []any
+		for _, item := range shown {
+			credit, ok := item.(*output.Record)
+			if !ok {
+				continue
+			}
+			entry := output.NewRecord()
+			for _, key := range append([]string{"id"}, keys[:]...) {
+				if value, has := credit.Get(key); has && value != nil {
+					entry.Set(key, value)
+				}
+			}
+			credits = append(credits, entry)
+		}
+		work.Set("works_"+kind+"s_attributes", credits)
+	}
+	work.Delete("alt_titles")
+	work.Delete("registration_codes")
+	work.Delete("language")
 }
 
 // parsePairs reads values of the form ID:TEXT into records with idKey a
@@ -249,7 +363,7 @@ time, and for the exports.`,
 			{Header: "RELEASED", Key: "release_date"},
 		},
 		fields: []field{
-			{flag: "work-id", key: "work_id", kind: kindInt, usage: "the server's ID of the work (the API does not yet take an external ID here)"},
+			{flag: "work", key: "work_id", usage: "external ID of the work placed (required)"},
 			{flag: "film-title", key: "original_film_title", usage: "title of the film"},
 			{flag: "film-imdb", key: "film_imdb_id", usage: "IMDB ID of the film, as tt1234567"},
 			{flag: "series-title", key: "original_series_title", usage: "title of the series"},
@@ -270,7 +384,8 @@ time, and for the exports.`,
 			{flag: "production", param: "q[film_or_series_title]", usage: "sales with this in the film or series title"},
 			{flag: "episode", param: "q[episode_title]", usage: "sales with this in the episode title"},
 		},
-		createExample: `  streamingchasers sales create --data @sale.json`,
+		createExample: `  streamingchasers sales create --work W-999 --film-title "Big Movie" --film-imdb tt0000300 --release-date 2024-01-15
+  streamingchasers sales create --data @sale.json`,
 		updateExample: `  streamingchasers sales update 4411 --episode-title "Pilot" --episode-imdb tt0959621`,
 	}
 }
@@ -367,8 +482,8 @@ func agreementFields(kind string) []field {
 
 func agreementFilters() []filter {
 	return []filter{
-		{flag: "assignor", param: "assignor_external_id", usage: "agreements of this assignor, by external ID"},
-		{flag: "assignee", param: "assignee_external_id", usage: "agreements of this assignee, by external ID"},
+		{flag: "assignor", param: "q[assignor_external_id]", usage: "agreements of this assignor, by external ID"},
+		{flag: "assignee", param: "q[assignee_external_id]", usage: "agreements of this assignee, by external ID"},
 	}
 }
 
@@ -485,15 +600,15 @@ func referenceResources() []*resource {
 		simple("works-file-formats", "works_file_formats", "works file format", "", "The formats a works CSV may be in",
 			[]output.Column{id, name, {Header: "TYPE", Key: "format_type"}, {Header: "NEEDS PRO", Value: yesNo("requires_pro")}, {Header: "EXTENSION", Key: "file_extension"}, description}),
 		simple("registration-types", "registration_types", "registration type", "", "The kinds of registration code a work can carry, one per PRO",
-			[]output.Column{id, name, {Header: "PRO", Key: "pro_id"}, description}),
+			[]output.Column{id, name, {Header: "PRO", Key: "pro_id"}, {Header: "WORK ID IS", Key: "work_id_description", Max: 40}, {Header: "FORMAT", Key: "validation_regexp", Max: 30}}),
 		simple("writer-designations", "writer_designations", "writer designation", "", "The CWR writer designations", []output.Column{id, code, description}),
 		simple("publisher-types", "publisher_types", "publisher type", "", "The CWR publisher types", []output.Column{id, code, description}),
 		simple("title-types", "title_types", "title type", "", "The CWR title types, for alternative titles", []output.Column{id, code, description}),
 		simple("cis-languages", "cis_languages", "CIS language", "", "The languages a work can be in", []output.Column{id, code, name}),
 		simple("tis-territories", "tis_territories", "TIS territory", "TIS territories", "The territories", []output.Column{id, {Header: "TIS", Key: "tis_a"}, {Header: "EXT", Key: "tis_a_ext"}, name}),
-		simple("tis-territory-types", "tis_territory_types", "TIS territory type", "", "The kinds of territory", []output.Column{id, name}),
+		simple("tis-territory-types", "tis_territory_types", "TIS territory type", "", "The kinds of territory", []output.Column{id, name, {Header: "ABBREVIATION", Key: "abbreviation"}}),
 		simple("production-companies", "production_companies", "production company", "production companies", "The production companies", []output.Column{id, name}),
-		simple("streamers", "streamers", "streamer", "", "The streaming services and channels", []output.Column{id, name}),
+		simple("streamers", "streamers", "streamer", "", "The streaming services and channels", []output.Column{id, name, {Header: "TRACKED", Value: yesNo("tracked")}}),
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 var readOnlyKeys = []string{
 	"created_at", "updated_at", "url", "csv_file_url", "works_count", "full_name", "pro_name",
 	"territories", "alt_names", "language", "language_code", "alt_titles", "registration_codes",
-	"publishers", "writers", "pro", "work", "production", "sales_upload", "work_title", "work_external_id",
+	"pro", "work", "production", "sales_upload", "work_title", "work_external_id",
 }
 
 // readSource reads a flag's value: the text itself, the file named

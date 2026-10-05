@@ -60,6 +60,9 @@ func TestLoginWithOAuth(t *testing.T) {
 	h.ok("writers", "create", "--id", "W-300", "--last-name", "Parton")
 	r = h.fails(ExitForbidden, "does not carry the catalog_admin scope", "companies", "update", "2", "--name", "X")
 	want(t, r.stderr, "streamingchasers auth login --host "+h.server.URL+" --admin")
+	// Nor may a read-only sign-in read the unscoped account token.
+	h.fails(ExitError, "only to the token itself or to a sign-in with --admin", "account", "token")
+	unwanted(t, h.ok("account", "show", "-o", "json").stdout, "auth_token")
 }
 
 func TestLoginWithAdmin(t *testing.T) {

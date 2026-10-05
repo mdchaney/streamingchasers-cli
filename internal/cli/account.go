@@ -123,7 +123,10 @@ line, so that it stays out of your shell history.`,
 		Use:   "token",
 		Short: "Print your API token",
 		Long: `Print your API token, for scripts: it works as a bearer token, unscoped,
-until you reset it. Treat the output as a password.`,
+until you reset it. Treat the output as a password.
+
+With a browser sign-in, seeing it takes 'streamingchasers auth login
+--admin': a read-only sign-in may not read a token that can do anything.`,
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := a.session()
@@ -139,7 +142,7 @@ until you reset it. Treat the output as a password.`,
 				return err
 			}
 			if record.String("auth_token") == "" {
-				return fmt.Errorf("the server did not send the token")
+				return fmt.Errorf("the server shows the API token only to the token itself or to a sign-in with --admin; run '%s --admin'", loginCommand(s.host))
 			}
 			_, err = fmt.Fprintln(a.Out, record.String("auth_token"))
 			return err

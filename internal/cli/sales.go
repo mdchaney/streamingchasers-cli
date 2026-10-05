@@ -94,13 +94,14 @@ var statusColumns = []output.Column{
 	{Header: "CREATED", Value: timestamp("created_at")},
 }
 
-// pathWithPro resolves --pro and builds a company path with its ID.
+// pathWithPro builds a company path under a PRO, by its ID or its
+// abbreviation.
 func pathWithPro(s *session, cmd *cobra.Command, pro string, segments ...any) (string, error) {
-	id, err := s.proID(cmd.Context(), pro)
+	segment, err := proSegment(pro)
 	if err != nil {
 		return "", err
 	}
-	return s.companyPath(cmd.Context(), append([]any{"pros", id}, segments...)...)
+	return s.companyPath(cmd.Context(), append([]any{"pros", segment}, segments...)...)
 }
 
 // recordPath is the path of a record given its ID: for downloads.

@@ -89,18 +89,16 @@ func fmtFloat(n float64) string {
 func TestCatalogs(t *testing.T) {
 	h := signedIn(t)
 	want(t, h.ok("catalogs", "list").stdout, "C-1", "Film scores", "WORKS", "1")
-	// The show endpoint wraps the record.
 	r := h.ok("catalogs", "create", "--id", "C-2", "--name", "Jingles")
 	want(t, r.stderr, "Created catalog C-2.")
 	want(t, r.stdout, "external_id:", "C-2", "name:", "Jingles")
-	unwanted(t, r.stdout, "catalog:")
 	catalog := decode[map[string]any](t, h.ok("catalogs", "get", "C-2", "-o", "json"))
-	if catalog["name"] != "Jingles" {
+	if catalog["name"] != "Jingles" || catalog["id"] != "C-2" {
 		t.Errorf("unexpected catalog: %v", catalog)
 	}
-	// Its validation errors come without a message.
 	h.fails(ExitInvalid, "Name can't be blank", "catalogs", "update", "C-2", "--name", "")
 	h.ok("catalogs", "delete", "C-2", "--yes")
+	as(t, viewerToken).fails(ExitForbidden, "Forbidden", "catalogs", "create", "--id", "C-3", "--name", "No")
 }
 
 func TestWorks(t *testing.T) {
@@ -112,13 +110,40 @@ func TestWorks(t *testing.T) {
 	r := h.ok("works", "get", "W-999")
 	want(t, r.stdout, "title:", "Drunken Daisy", "registration_codes:", "123456789", "ASCAP Work ID", "publishers:", "Mike's Awesome Music", "writers:", "Ilze Platais")
 
-	r = h.ok("works", "create", "--id", "W-2000", "--title", "New Work", "--language", "2", "--code", "3:987654321", "--alt-title", "1:A New Work")
+	r = h.ok("works", "create", "--id", "W-2000", "--title", "New Work", "--language", "2", "--code", "3:987654321", "--alt-title", "1:A New Work",
+		"--writer", "W-186:50:1", "--writer", "W-187:50", "--publisher", "P-2")
 	want(t, r.stderr, "Created work W-2000.")
-	want(t, r.stdout, "French", "987654321", "A New Work")
+	want(t, r.stdout, "French", "987654321", "A New Work", "Ilze Platais", "Neal Busby", "Mike's Awesome Music")
 	body := h.lastBody("POST", "/api/v1/companies/2/works")["work"].(map[string]any)
 	codes := body["registration_codes_attributes"].([]any)
 	if len(codes) != 1 || codes[0].(map[string]any)["registration_type_id"] != float64(3) || codes[0].(map[string]any)["code"] != "987654321" {
 		t.Errorf("unexpected codes: %v", codes)
+	}
+	writers := body["works_writers_attributes"].([]any)
+	first := writers[0].(map[string]any)
+	if len(writers) != 2 || first["writer_id"] != "W-186" || first["share"] != float64(50) || first["writer_designation_id"] != float64(1) {
+		t.Errorf("unexpected writers: %v", writers)
+	}
+	if publisher := body["works_publishers_attributes"].([]any)[0].(map[string]any); publisher["publisher_id"] != "P-2" || publisher["share"] != float64(100) {
+		t.Errorf("unexpected publishers: %v", body["works_publishers_attributes"])
+	}
+	h.fails(ExitNotFound, "Not found", "works", "create", "--id", "W-3", "--title", "T", "--writer", "W-999")
+	h.fails(ExitUsage, "give every --writer a share or none", "works", "create", "--id", "W-3", "--title", "T", "--writer", "W-186:50", "--writer", "W-187")
+
+	// What get shows can be sent back: credits update by their ids.
+	work := decode[map[string]any](t, h.ok("works", "get", "W-2000", "-o", "json"))
+	credit := work["writers"].([]any)[0].(map[string]any)
+	if credit["id"] == nil || credit["writer_id"] != "W-186" {
+		t.Fatalf("unexpected credit: %v", credit)
+	}
+	h.ok("works", "update", "W-2000", "--data", h.ok("works", "get", "W-2000", "-o", "json").stdout)
+	again := decode[map[string]any](t, h.ok("works", "get", "W-2000", "-o", "json"))
+	if n := len(again["writers"].([]any)); n != 2 {
+		t.Errorf("sending a work back doubled its credits: %d", n)
+	}
+	h.ok("works", "update", "W-2000", "--set", `works_writers_attributes=[{"id": `+jsonNumber(credit["id"])+`, "_destroy": true}]`)
+	if n := len(decode[map[string]any](t, h.ok("works", "get", "W-2000", "-o", "json"))["writers"].([]any)); n != 1 {
+		t.Errorf("the credit was not removed: %d left", n)
 	}
 	h.fails(ExitUsage, "--code takes ID:CODE", "works", "create", "--id", "W-3", "--title", "T", "--code", "nope")
 	h.fails(ExitInvalid, "Title can't be blank", "works", "create", "--id", "W-3")
@@ -163,6 +188,9 @@ func TestAgreements(t *testing.T) {
 	h.fails(ExitUsage, "--starts-on must be a date", "subpublishing-agreements", "create", "--assignor", "P-2", "--assignee", "P-40", "--starts-on", "yesterday")
 	h.fails(ExitNotFound, "Not found", "subpublishing-agreements", "create", "--assignor", "P-2", "--assignee", "P-99", "--starts-on", "2024-01-01")
 	want(t, h.ok("subpublishing-agreements", "list", "--assignor", "P-2").stdout, "SP-1")
+	if req := h.lastRequest("GET", "/api/v1/companies/2/subpublishing_agreements"); !strings.Contains(req.Query, "q%5Bassignor_external_id%5D=P-2") {
+		t.Errorf("query = %q", req.Query)
+	}
 	want(t, h.ok("subpublishing-agreements", "list", "--assignor", "P-40").stderr, "No subpublishing agreements match.")
 
 	r = h.ok("admin-agreements", "create", "--assignor", "P-2", "--assignee", "P-40", "--number", "AD-1", "--starts-on", "2024-01-01", "--fee-share", "15")

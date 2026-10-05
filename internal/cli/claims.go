@@ -366,13 +366,14 @@ You are asked to confirm. A script passes --yes.`,
 
 func (a *App) newBatchCSVCmd() *cobra.Command {
 	var variant, sort string
-	var noNotes bool
+	var noNotes, noMarkSent bool
 	save := &saveOptions{}
 	cmd := &cobra.Command{
 		Use:   "csv ID",
 		Short: "Download a batch's claims sheet, which marks the batch as sent",
 		Long: `Download a batch's claims sheet, as the PRO wants it (GEMA batches come
-as a spreadsheet). Downloading the sheet marks the batch as sent.
+as a spreadsheet). Downloading the sheet marks the batch as sent, unless
+--no-mark-sent says to download it for checking first.
 
 --variant missing-codes downloads instead the companion sheet of rows that
 were left out for want of a work code, which does not mark the batch
@@ -403,6 +404,9 @@ otherwise.`,
 			if noNotes {
 				query.Set("with_notes", "0")
 			}
+			if noMarkSent {
+				query.Set("mark_sent", "0")
+			}
 			s, err := a.session()
 			if err != nil {
 				return err
@@ -418,7 +422,7 @@ otherwise.`,
 			if err := a.deliver(resp, save, "batch-"+args[0]+".csv"); err != nil {
 				return err
 			}
-			if variant == "" {
+			if variant == "" && !noMarkSent {
 				fmt.Fprintf(a.Err, "Batch %s is now marked as sent.\n", args[0])
 			}
 			return nil
@@ -427,6 +431,7 @@ otherwise.`,
 	cmd.Flags().StringVar(&variant, "variant", "", "missing-codes for the sheet of rows left out for want of a code")
 	cmd.Flags().StringVar(&sort, "sort", "", "chase-money or chase-views")
 	cmd.Flags().BoolVar(&noNotes, "no-notes", false, "leave out the publisher-notes column")
+	cmd.Flags().BoolVar(&noMarkSent, "no-mark-sent", false, "download without marking the batch as sent")
 	addSaveFlags(cmd, save)
 	return cmd
 }
