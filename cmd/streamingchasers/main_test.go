@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mdchaney/streamingchasers-api/internal/fakeserver"
+	"github.com/mdchaney/streamingchasers-cli/internal/fakeserver"
 )
 
 // binary is the command, built once for the tests of this package.

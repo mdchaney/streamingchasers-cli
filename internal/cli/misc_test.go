@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mdchaney/streamingchasers-api/internal/api"
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
 )
 
 func TestOutputFormats(t *testing.T) {

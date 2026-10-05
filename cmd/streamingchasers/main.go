@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 	"syscall"
 
-	"github.com/mdchaney/streamingchasers-api/internal/cli"
+	"github.com/mdchaney/streamingchasers-cli/internal/cli"
 	"golang.org/x/term"
 )
 

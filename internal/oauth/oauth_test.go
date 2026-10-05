@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mdchaney/streamingchasers-api/internal/fakeserver"
+	"github.com/mdchaney/streamingchasers-cli/internal/fakeserver"
 )
 
 func TestChallengeMatchesRFC7636(t *testing.T) {

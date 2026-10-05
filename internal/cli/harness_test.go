@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mdchaney/streamingchasers-api/internal/config"
-	"github.com/mdchaney/streamingchasers-api/internal/fakeserver"
+	"github.com/mdchaney/streamingchasers-cli/internal/config"
+	"github.com/mdchaney/streamingchasers-cli/internal/fakeserver"
 )
 
 // Tokens of the fake server's users.

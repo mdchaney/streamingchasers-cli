@@ -1,4 +1,4 @@
-module github.com/mdchaney/streamingchasers-api
+module github.com/mdchaney/streamingchasers-cli
 
 go 1.22
 

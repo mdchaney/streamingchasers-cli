@@ -6,7 +6,7 @@ SPEC ?= ../test.streamingchasers.com/public/api/v1/openapi.yaml
 API_VERSION ?= $(shell awk '/^  version:/ {gsub(/"/, "", $$2); print $$2; exit}' $(SPEC) 2>/dev/null)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 ifneq ($(API_VERSION),)
-LDFLAGS += -X github.com/mdchaney/streamingchasers-api/internal/api.SpecVersion=$(API_VERSION)
+LDFLAGS += -X github.com/mdchaney/streamingchasers-cli/internal/api.SpecVersion=$(API_VERSION)
 endif
 STATICCHECK := honnef.co/go/tools/cmd/staticcheck@2024.1.1
 PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64

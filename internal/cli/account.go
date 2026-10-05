@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mdchaney/streamingchasers-api/internal/api"
-	"github.com/mdchaney/streamingchasers-api/internal/output"
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
+	"github.com/mdchaney/streamingchasers-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

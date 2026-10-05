@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/mdchaney/streamingchasers-api/internal/api"
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
 	"github.com/spf13/cobra"
 )
 

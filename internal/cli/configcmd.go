@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/mdchaney/streamingchasers-api/internal/config"
+	"github.com/mdchaney/streamingchasers-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

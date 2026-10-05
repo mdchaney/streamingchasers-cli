@@ -33,7 +33,7 @@ SERIES  TITLE                 MONEY    VIEWS   EST. VIEWS  PAID  UNPAID
 With Go 1.22 or later:
 
 ```console
-$ go install github.com/mdchaney/streamingchasers-api/cmd/streamingchasers@latest
+$ go install github.com/mdchaney/streamingchasers-cli/cmd/streamingchasers@latest
 ```
 
 Or from a checkout:

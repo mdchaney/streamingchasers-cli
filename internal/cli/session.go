@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mdchaney/streamingchasers-api/internal/api"
-	"github.com/mdchaney/streamingchasers-api/internal/config"
-	"github.com/mdchaney/streamingchasers-api/internal/oauth"
-	"github.com/mdchaney/streamingchasers-api/internal/output"
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
+	"github.com/mdchaney/streamingchasers-cli/internal/config"
+	"github.com/mdchaney/streamingchasers-cli/internal/oauth"
+	"github.com/mdchaney/streamingchasers-cli/internal/output"
 )
 
 // refreshLeeway is how long before its expiry an access token is

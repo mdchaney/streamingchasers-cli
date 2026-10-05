@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/mdchaney/streamingchasers-api/internal/api"
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
 )
 
 func TestVersionHandshake(t *testing.T) {

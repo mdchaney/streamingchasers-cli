@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/mdchaney/streamingchasers-api/internal/output"
+	"github.com/mdchaney/streamingchasers-cli/internal/output"
 )
 
 // readOnlyKeys are the fields of a record that the server computes.
