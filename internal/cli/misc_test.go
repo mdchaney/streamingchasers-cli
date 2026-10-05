@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/mdchaney/streamingchasers-api/internal/api"
 )
 
 func TestOutputFormats(t *testing.T) {
@@ -159,7 +161,7 @@ func TestUsageErrors(t *testing.T) {
 	want(t, r.stderr, "Did you mean this?", "works")
 	h.fails(ExitUsage, "unknown flag", "works", "list", "--nope")
 	h.fails(ExitUsage, "missing EXTERNAL_ID", "works", "get")
-	want(t, h.ok("version").stdout, "streamingchasers test")
+	want(t, h.ok("version").stdout, "streamingchasers test (API "+api.SpecVersion+")")
 	want(t, h.ok("config", "list").stdout, "host", "company")
 	h.fails(ExitUsage, "there is no setting called", "config", "get", "nope")
 }

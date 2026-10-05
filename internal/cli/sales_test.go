@@ -19,6 +19,7 @@ func TestSales(t *testing.T) {
 	want(t, r.stderr, "Created sale")
 	want(t, r.stdout, "Another Movie", "Drunken Daisy")
 	h.fails(ExitNotFound, "Not found", "sales", "create", "--work", "W-99", "--film-title", "X")
+	want(t, h.ok("sales", "create", "--work-id", "W-1001", "--film-title", "Spelled the other way").stdout, "Highway Windows Down")
 	h.fails(ExitInvalid, "Work must exist", "sales", "create", "--film-title", "X")
 	h.ok("sales", "update", "4411", "--episode-number", "7")
 	want(t, h.ok("sales", "get", "4411").stdout, "original_full_episode_number:", "7")

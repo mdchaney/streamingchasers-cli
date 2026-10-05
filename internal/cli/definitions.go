@@ -364,6 +364,7 @@ time, and for the exports.`,
 		},
 		fields: []field{
 			{flag: "work", key: "work_id", usage: "external ID of the work placed (required)"},
+			{flag: "work-id", key: "work_id", usage: "the same as --work"},
 			{flag: "film-title", key: "original_film_title", usage: "title of the film"},
 			{flag: "film-imdb", key: "film_imdb_id", usage: "IMDB ID of the film, as tt1234567"},
 			{flag: "series-title", key: "original_series_title", usage: "title of the series"},
@@ -383,6 +384,9 @@ time, and for the exports.`,
 			{flag: "code", param: "q[registration_code]", usage: "sales of works with this registration code"},
 			{flag: "production", param: "q[film_or_series_title]", usage: "sales with this in the film or series title"},
 			{flag: "episode", param: "q[episode_title]", usage: "sales with this in the episode title"},
+		},
+		flags: func(cmd *cobra.Command) {
+			_ = cmd.Flags().MarkHidden("work-id")
 		},
 		createExample: `  streamingchasers sales create --work W-999 --film-title "Big Movie" --film-imdb tt0000300 --release-date 2024-01-15
   streamingchasers sales create --data @sale.json`,

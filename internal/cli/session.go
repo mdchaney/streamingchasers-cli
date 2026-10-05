@@ -109,6 +109,8 @@ func (a *App) newClient(host string, auth api.Authorizer) *api.Client {
 		UserAgent:  a.userAgent(),
 		Retries:    2,
 		RetryDelay: a.RetryDelay,
+		APIVersion: api.SpecVersion,
+		Versions:   &a.versions,
 	}
 	if client.RetryDelay == 0 {
 		client.RetryDelay = 500 * time.Millisecond

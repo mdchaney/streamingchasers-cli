@@ -135,8 +135,12 @@ Or name one each time with `--company` (`-c`), by ID or by name, or with
 Your role in a company is what you may do there. A viewer can read; an
 editor can also change the catalog, load files and build claims; an admin
 can also manage CWR connections; the owner can also change the company's
-settings and hand it to another collaborator. Companies are made, and
-collaborators invited, on the web site.
+settings and hand it to another collaborator.
+
+Companies are made, collaborators invited and removed, subscriptions
+bought, and sessions and connected applications managed on the web site,
+and only there: the API leaves them out on purpose, and so does this
+program.
 
 ## Commands
 
@@ -272,6 +276,7 @@ statements are what the PROs paid, matched against them.
 
 ```console
 $ streamingchasers sales-uploads create --file placements.csv --wait
+$ streamingchasers sales create --work W-999 --film-title "Big Movie" --film-imdb tt0000300
 $ streamingchasers sales list --production "Big Series"
 $ streamingchasers sales paid-csv --save                       # every paid sale, a column per PRO
 $ streamingchasers sales paid-csv --pro BMI --save-as bmi.csv  # one PRO's, a column per streamer
@@ -341,7 +346,8 @@ $ streamingchasers cwr connections download-acks 3
 $ streamingchasers cwr acks list --connection 3
 ```
 
-A connection is the company's link to one PRO's delivery server. Making
+A connection is the company's link to one PRO's delivery server;
+`--destination` names the server by ID, name or PRO. Making
 or changing one takes a company admin and, with a browser sign-in,
 `streamingchasers auth login --admin`. Its password for the PRO server is
 accepted and never shown again; give it as `--password @file` to keep it
@@ -414,6 +420,24 @@ unreachable or answers 502, 503 or 504: reads, updates, deletes, and the
 uploads, which carry an idempotency key. Other creates are never repeated.
 The server allows 600 requests a minute; a 429 says how long to wait.
 
+### API versions
+
+The API has a version, and this program is built for one. It declares it
+with every request, and the server says how the two stand:
+
+```console
+$ streamingchasers version
+streamingchasers 1.0.0 (API 1.1.0)
+https://app.streamingchasers.com speaks API 1.1.0: the same as this program
+```
+
+When the server is newer, every command ends with a note to upgrade. When
+the server is older than this program, nothing is said while things work;
+when something fails, the error comes with a note that the server may not
+have it yet, which is what a 404 from a server awaiting a deploy means.
+`version` asks without credentials, so it works before signing in, and
+`auth status` and `--debug` show both versions too.
+
 ## Settings
 
 | Environment | Setting | Flag | |
@@ -448,7 +472,7 @@ $ make release    # binaries for macOS, Linux and Windows in ./dist
 |---|---|
 | `cmd/streamingchasers` | `main`: the terminal, the environment, signals |
 | `internal/cli` | The commands |
-| `internal/api` | The REST client: requests, multipart uploads, errors, pagination, retries |
+| `internal/api` | The REST client: requests, multipart uploads, errors, pagination, retries, the version handshake |
 | `internal/oauth` | Discovery, registration, PKCE, the loopback redirect, refresh, revocation |
 | `internal/config` | Settings and credentials |
 | `internal/output` | Tables, CSV and JSON |
@@ -456,7 +480,11 @@ $ make release    # binaries for macOS, Linux and Windows in ./dist
 
 The CLI is built against `public/api/v1/openapi.yaml` in the server
 repository, which a test there keeps truthful, and against its jbuilder
-views for the shape of each record.
+views for the shape of each record. The description's `info.version` is
+the API version this program declares: `make build` reads it from the
+description when the server's repository is beside this one, and
+`internal/api/version.go` holds it otherwise. A test fails when the two
+differ, which is the prompt to follow what changed in the API and bump it.
 
 ### The tests
 

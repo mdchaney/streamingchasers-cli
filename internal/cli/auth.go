@@ -519,6 +519,9 @@ func (a *App) newStatusCmd() *cobra.Command {
 				fmt.Fprintf(a.Out, "  Signed in as:     %s <%s>\n", me.String("name"), me.String("email_address"))
 			}
 			fmt.Fprintln(a.Out, "  Server:           up, and it accepts these credentials")
+			if server := a.versions.Server(); server != "" {
+				fmt.Fprintf(a.Out, "  API version:      %s on the server, %s in this program (%s)\n", server, api.SpecVersion, a.versions.Status())
+			}
 			return nil
 		},
 	}

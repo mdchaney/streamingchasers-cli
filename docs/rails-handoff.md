@@ -17,6 +17,7 @@ was addressed on the application's `mdc` branch (commits `b871f06`,
 | 5 | PRO by abbreviation | `--pro ASCAP` goes straight into the path; the lookup request is gone |
 | 6 | CWR destinations | `streamingchasers cwr destinations list` |
 | 7 | `auth_token` scoping, `mark_sent=0` | `account token` says when it needs `--admin`; `batches csv --no-mark-sent` |
+| + | The version handshake (new, from [rails-to-cli-instructions.md](rails-to-cli-instructions.md)) | Sends `X-Client-API-Version`, reads `X-API-Version-Status`; `version` shows both; errors against an older server say so |
 
 The CLI has still **not been run against the application itself**; the
 section at the end says what to try first. What follows is the request
@@ -146,6 +147,7 @@ sales by external id, the four new reference lists, catalogs, and the
 validation-error map.
 
 ```console
+$ streamingchasers version --host localhost:3000               # if the server is older than this program, stop: it is not deployed yet
 $ streamingchasers auth login --host localhost:3000            # the OAuth flow end to end
 $ streamingchasers companies list && streamingchasers companies use <name>
 $ streamingchasers works list --title <word> ; writers list ; publishers list ; catalogs list

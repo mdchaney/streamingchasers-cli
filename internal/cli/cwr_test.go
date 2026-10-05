@@ -19,6 +19,12 @@ func TestCwrConnections(t *testing.T) {
 		t.Errorf("body = %s", body)
 	}
 	h.fails(ExitInvalid, "Server username can't be blank", "cwr", "connections", "create", "--destination", "2", "--password", "x")
+	// A destination can be named, by its name or its PRO.
+	h.ok("cwr", "connections", "create", "--destination", "ascap", "--username", "u2", "--password", "p", "--inbound", "/in", "--sender-name", "FM", "--sender-ipi", "1")
+	if body := string(h.lastRequest("POST", "/api/v1/companies/2/cwr_connections").Body); !strings.Contains(body, `"cwr_destination_id":2`) {
+		t.Errorf("body = %s", body)
+	}
+	h.fails(ExitError, `no CWR destination is named "SACEM"`, "cwr", "connections", "create", "--destination", "SACEM", "--username", "u")
 	id := idFrom(t, h.ok("cwr", "connections", "list", "-o", "jsonl").stdout)
 	_ = id
 	h.ok("cwr", "connections", "update", "3", "--active=false")

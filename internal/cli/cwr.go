@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mdchaney/streamingchasers-api/internal/api"
@@ -52,7 +54,6 @@ func cwrConnectionsResource() *resource {
 			{Header: "QUEUED", Key: "queued_tickets"},
 		},
 		fields: []field{
-			{flag: "destination", key: "cwr_destination_id", kind: kindInt, usage: "ID of the PRO delivery server (required; see 'streamingchasers cwr destinations list')"},
 			{flag: "username", key: "server_username", usage: "user name on the PRO server (required)"},
 			{flag: "password", key: "server_password", kind: kindText, usage: "password on the PRO server (required to create); @FILE keeps it out of your shell history"},
 			{flag: "outbound", key: "outbound_directory", usage: "directory on the PRO server to put files in"},
@@ -64,7 +65,30 @@ func cwrConnectionsResource() *resource {
 			{flag: "serial-offset", key: "filename_serial_offset", kind: kindInt, usage: "where file serial numbers start"},
 			{flag: "active", key: "active", kind: kindBool, usage: "the connection is in use"},
 		},
-		createExample: `  streamingchasers cwr connections create --destination 2 --username frivolous --password @pw.txt \
+		flags: func(cmd *cobra.Command) {
+			cmd.Flags().String("destination", "", "the PRO delivery server, by ID, name or PRO (required; see 'streamingchasers cwr destinations list')")
+		},
+		apply: func(a *App, cmd *cobra.Command, body *output.Record) error {
+			if !cmd.Flags().Changed("destination") {
+				return nil
+			}
+			selected, _ := cmd.Flags().GetString("destination")
+			if _, err := strconv.ParseInt(selected, 10, 64); err == nil {
+				body.Set("cwr_destination_id", json.Number(selected))
+				return nil
+			}
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			record, err := s.findByName(cmd.Context(), api.Path("cwr_destinations"), "cwr_destinations", "CWR destination", selected, "name", "pro")
+			if err != nil {
+				return err
+			}
+			body.Set("cwr_destination_id", json.Number(record.String("id")))
+			return nil
+		},
+		createExample: `  streamingchasers cwr connections create --destination ASCAP --username frivolous --password @pw.txt \
       --inbound /in --outbound /out --sender-name "FRIVOLOUS MUSIC" --sender-ipi 123456789 --sender-code FRV`,
 		updateExample: `  streamingchasers cwr connections update 3 --active=false`,
 	}
@@ -569,6 +593,3 @@ download-acks' fetches new ones.`)
 	cmd.AddCommand(list, get, download)
 	return cmd
 }
-
-// Keep api imported for callers that build paths directly.
-var _ = api.Path

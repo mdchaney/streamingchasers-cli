@@ -63,6 +63,10 @@ type Client struct {
 	Retries int
 	// RetryDelay is the pause before the first retry; it doubles each time.
 	RetryDelay time.Duration
+	// APIVersion is sent as X-Client-API-Version; "" sends nothing.
+	APIVersion string
+	// Versions, if set, is told what the server says of its version.
+	Versions *Versions
 }
 
 // Response is a successful response.
@@ -297,9 +301,15 @@ func (c *Client) sendOnce(ctx context.Context, method, target string, payload []
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
+	if c.APIVersion != "" {
+		req.Header.Set("X-Client-API-Version", c.APIVersion)
+	}
 
 	if c.Debug != nil {
 		fmt.Fprintf(c.Debug, "> %s %s\n", method, target)
+		if c.APIVersion != "" {
+			fmt.Fprintf(c.Debug, "> X-Client-API-Version: %s\n", c.APIVersion)
+		}
 		if key := headers.Get("Idempotency-Key"); key != "" {
 			fmt.Fprintf(c.Debug, "> Idempotency-Key: %s\n", key)
 		}
@@ -342,8 +352,13 @@ func (c *Client) sendOnce(ctx context.Context, method, target string, payload []
 		return nil, fmt.Errorf("the response from %s is larger than %d MB", c.BaseURL, maxBody>>20)
 	}
 
+	c.Versions.Seen(httpResp.Header.Get("X-API-Version"), httpResp.Header.Get("X-API-Version-Status"))
+
 	if c.Debug != nil {
 		fmt.Fprintf(c.Debug, "< %s (%s)\n", httpResp.Status, time.Since(started).Round(time.Millisecond))
+		if version := httpResp.Header.Get("X-API-Version"); version != "" {
+			fmt.Fprintf(c.Debug, "< X-API-Version: %s (%s)\n", version, httpResp.Header.Get("X-API-Version-Status"))
+		}
 		if len(body) > 0 {
 			if strings.HasPrefix(httpResp.Header.Get("Content-Type"), "application/json") {
 				fmt.Fprintf(c.Debug, "< %s\n", truncate(body, 2000))

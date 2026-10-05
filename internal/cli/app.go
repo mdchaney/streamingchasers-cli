@@ -68,6 +68,8 @@ type App struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 
 	globals globals
+	// versions is what the server said of its API version in this run.
+	versions api.Versions
 }
 
 // globals are the flags every command accepts.
@@ -146,9 +148,26 @@ func (a *App) Run(ctx context.Context, args []string) int {
 
 	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
+		// A server that has moved on still answers; the user should
+		// know that this program is behind it.
+		if a.versions.Status() == api.StatusOutdated {
+			fmt.Fprintf(a.Err, "\nNote: %s\n", a.versionNote())
+		}
 		return ExitOK
 	}
 	return a.report(cmd, err)
+}
+
+// versionNote says how the server's API version stands to the one this
+// program was built for, or "" when they are the same or unknown.
+func (a *App) versionNote() string {
+	switch a.versions.Status() {
+	case api.StatusOutdated:
+		return fmt.Sprintf("the server speaks API %s and this program was built for %s; upgrade streamingchasers.", a.versions.Server(), api.SpecVersion)
+	case api.StatusAhead:
+		return fmt.Sprintf("this server speaks API %s, older than this program (built for %s). What failed may be something the server has not got yet.", a.versions.Server(), api.SpecVersion)
+	}
+	return ""
 }
 
 // report explains err to the user and returns the exit code for it.
@@ -163,6 +182,14 @@ func (a *App) report(cmd *cobra.Command, err error) int {
 	}
 
 	fmt.Fprintf(a.Err, "Error: %s\n", err)
+	// Said with whatever went wrong: a server older than this program
+	// answers 404 for what it has not got, and one newer may have
+	// changed what this program sends.
+	defer func() {
+		if note := a.versionNote(); note != "" {
+			fmt.Fprintf(a.Err, "\nNote: %s\n", note)
+		}
+	}()
 
 	var usage *usageError
 	var notSignedIn *errNotSignedIn

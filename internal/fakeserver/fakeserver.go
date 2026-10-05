@@ -127,6 +127,9 @@ type Server struct {
 	FailUploads   bool
 	// SendFails makes sending a CWR file fail at the PRO server.
 	SendFails bool
+	// APIVersion is the version of the API the server speaks, which it
+	// advertises on every answer; "" is a server from before it did.
+	APIVersion string
 
 	Users     []*User
 	Companies []*Company
@@ -153,6 +156,7 @@ func New() *Server {
 		Scopes:         []string{"catalog", "catalog_write", "catalog_admin"},
 		AccessTokenTTL: time.Hour,
 		PollsToFinish:  1,
+		APIVersion:     "1.1.0",
 		clients:        map[string]*oauthClient{},
 		grants:         map[string]*oauthGrant{},
 		nextID:         1000,
@@ -380,10 +384,62 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case path == "/oauth/revoke":
 		s.revoke(w, r, body)
 	case path == APIResource || strings.HasPrefix(path, APIResource+"/"):
+		s.advertiseVersion(w, r)
 		s.api(w, r, body)
 	default:
 		routingError(w)
 	}
+}
+
+// advertiseVersion is the version handshake: every answer of the API
+// says what version the server speaks, and a client that declares its
+// own learns how the two stand.
+func (s *Server) advertiseVersion(w http.ResponseWriter, r *http.Request) {
+	if s.APIVersion == "" {
+		return
+	}
+	w.Header().Set("X-API-Version", s.APIVersion)
+	client := r.Header.Get("X-Client-API-Version")
+	if client == "" {
+		return
+	}
+	w.Header().Set("X-API-Version-Status", compareVersions(client, s.APIVersion))
+}
+
+// compareVersions is ApiVersion.status_for.
+func compareVersions(client, current string) string {
+	parse := func(v string) ([]int, bool) {
+		var parts []int
+		for _, part := range strings.Split(v, ".") {
+			n, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, false
+			}
+			parts = append(parts, n)
+		}
+		return parts, true
+	}
+	a, ok := parse(client)
+	b, _ := parse(current)
+	if !ok {
+		return "unknown"
+	}
+	for i := 0; i < len(a) || i < len(b); i++ {
+		var x, y int
+		if i < len(a) {
+			x = a[i]
+		}
+		if i < len(b) {
+			y = b[i]
+		}
+		if x < y {
+			return "outdated"
+		}
+		if x > y {
+			return "ahead"
+		}
+	}
+	return "current"
 }
 
 // routingError is how Rails answers a path that matches no route: with

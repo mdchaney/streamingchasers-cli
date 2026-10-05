@@ -101,3 +101,20 @@ since those are the shapes that changed; the `works_file_formats` and
 catalogs envelopes and the validation-error map also changed shape, so
 `api.ParsePage`'s special cases for them can be deleted rather than
 kept.
+
+## Added since: the version handshake
+
+The API now has a versioning system (spec `info.version`, currently
+1.1.0; a server test forces a bump on any spec change):
+
+- Every `/api` response carries `X-API-Version`.
+- Send `X-Client-API-Version: <info.version of the spec the CLI was
+  built against>` on every request and read `X-API-Version-Status`:
+  `current`; `outdated` (tell the user to upgrade the CLI); `ahead`
+  (the CLI is newer than the server deployment - say so instead of
+  reporting mysterious 404s); `unknown` (you sent a non-version).
+
+Bake the spec version into the CLI at build time and wire the status
+header into its error reporting - "the server is older than this CLI"
+is exactly the message that would have explained every missing-endpoint
+404 during your first live run.

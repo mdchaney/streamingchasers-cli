@@ -40,12 +40,13 @@ Exit codes:
 
 func (a *App) newRootCmd() *cobra.Command {
 	a.globals = globals{}
+	a.versions = api.Versions{}
+	var showVersion bool
 
 	root := &cobra.Command{
 		Use:           "streamingchasers",
 		Short:         "The command line for Streaming Chasers",
 		Long:          rootLong,
-		Version:       a.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          subcommandsOnly,
@@ -59,10 +60,13 @@ func (a *App) newRootCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if showVersion {
+				return a.showVersion(cmd)
+			}
 			return cmd.Help()
 		},
 	}
-	root.SetVersionTemplate("streamingchasers {{.Version}}\n")
+	root.Flags().BoolVarP(&showVersion, "version", "v", false, "show the version, and the server's API version")
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return &usageError{message: err.Error()}
 	})
@@ -121,13 +125,59 @@ func (a *App) newRootCmd() *cobra.Command {
 func (a *App) newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Show the version",
-		Args:  noArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			_, err := fmt.Fprintf(a.Out, "streamingchasers %s\n", a.Version)
-			return err
-		},
+		Short: "Show the version, and the server's API version",
+		Long: `Show the version of this program, the version of the API it was built
+for, and the version the server speaks.
+
+The server is asked without credentials, so this works before signing in.
+When the two API versions differ it says which is behind: a server older
+than this program has not got everything this program can ask for, and
+one newer means this program should be upgraded.`,
+		Args: noArgs,
+		RunE: func(cmd *cobra.Command, args []string) error { return a.showVersion(cmd) },
 	}
+}
+
+// showVersion prints this program's version and API version, then asks
+// the server for its own.  Every answer of the API carries it, the
+// refusal of a request without credentials included.
+func (a *App) showVersion(cmd *cobra.Command) error {
+	fmt.Fprintf(a.Out, "streamingchasers %s (API %s)\n", a.Version, api.SpecVersion)
+	store, err := a.store()
+	if err != nil {
+		return nil
+	}
+	cfg, err := store.LoadConfig()
+	if err != nil {
+		return nil
+	}
+	host, err := a.resolveHost(cfg)
+	if err != nil {
+		return nil
+	}
+	client := a.newClient(host, nil)
+	client.Retries = 0
+	_, err = client.Get(cmd.Context(), api.Path("users", "me"), nil)
+	server := a.versions.Server()
+	switch {
+	case server == "" && api.StatusOf(err) == 0:
+		fmt.Fprintf(a.Out, "%s could not be reached\n", host)
+	case server == "":
+		fmt.Fprintf(a.Out, "%s does not say what API version it speaks; it is older than this program\n", host)
+	default:
+		standing := map[string]string{
+			api.StatusCurrent:  "the same as this program",
+			api.StatusOutdated: "newer than this program; upgrade streamingchasers",
+			api.StatusAhead:    "older than this program; some commands may not work until the server is updated",
+		}[a.versions.Status()]
+		if standing == "" {
+			standing = "it did not say how that stands to this program"
+		}
+		fmt.Fprintf(a.Out, "%s speaks API %s: %s\n", host, server, standing)
+	}
+	// The note would only say it twice.
+	a.versions = api.Versions{}
+	return nil
 }
 
 func (a *App) newPingCmd() *cobra.Command {

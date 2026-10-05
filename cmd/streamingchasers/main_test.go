@@ -56,8 +56,8 @@ func run(t *testing.T, env []string, stdin string, args ...string) (stdout, stde
 }
 
 func TestVersionIsSetByTheBuild(t *testing.T) {
-	stdout, _, code := run(t, nil, "", "version")
-	if code != 0 || stdout != "streamingchasers 1.2.3\n" {
+	stdout, _, code := run(t, []string{"STREAMINGCHASERS_HOST=http://127.0.0.1:1"}, "", "version")
+	if code != 0 || !strings.HasPrefix(stdout, "streamingchasers 1.2.3 (API ") {
 		t.Errorf("exit %d: %q", code, stdout)
 	}
 }
