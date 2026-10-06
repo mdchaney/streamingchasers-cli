@@ -759,7 +759,7 @@ func (s *Server) chaseScores(req *request, rest []string, pro record) {
 						if i >= 0 {
 							title = company.Works[i]["title"]
 						}
-						rows = append(rows, record{"id": row["id"], "paid_at": nil, "episode_title": row["episode_title"], "season_number": 1, "episode_number": row["episode_number"], "work_title": title, "streamer": row["streamer"], "air_date": row["air_date"], "money_observed": row["money"], "views_observed": row["views"]})
+						rows = append(rows, record{"id": row["id"], "paid_at": nil, "episode_title": row["episode_title"], "season_number": 1, "episode_number": row["episode_number"], "work_id": row["work_external_id"], "work_title": title, "streamer": row["streamer"], "air_date": row["air_date"], "money_observed": row["money"], "views_observed": row["views"]})
 					}
 				}
 				page, pagination := paginate(req.r, rows, 0)

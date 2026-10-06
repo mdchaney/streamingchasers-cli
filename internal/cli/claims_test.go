@@ -90,7 +90,7 @@ func TestChaseScores(t *testing.T) {
 	}
 	want(t, h.ok("chase", "get", "500", "--pro", "ASCAP").stdout, "series:", "Big Series", "money_observed:")
 	h.fails(ExitNotFound, "Not found", "chase", "get", "999", "--pro", "ASCAP")
-	want(t, h.ok("chase", "placements", "500", "--pro", "ASCAP").stdout, "EPISODE", "WORK", "Pilot", "Drunken Daisy", "Hulu")
+	want(t, h.ok("chase", "placements", "500", "--pro", "ASCAP").stdout, "EPISODE", "WORK", "TITLE", "Pilot", "W-999", "Drunken Daisy", "Hulu")
 	want(t, h.ok("chase", "recompute", "--pro", "ASCAP").stderr, "Recompute enqueued for Frivolous Music.")
 }
 
