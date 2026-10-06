@@ -10,7 +10,7 @@ import "sync"
 // A release build sets it from the description itself:
 //
 //	go build -ldflags "-X github.com/mdchaney/streamingchasers-cli/internal/api.SpecVersion=1.2.0"
-var SpecVersion = "1.1.0"
+var SpecVersion = "1.1.4"
 
 // What the server may say of the version a client declares.
 const (

@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 # The API version this build declares is the info.version of the OpenAPI
 # description it is built against, when the server's repository is beside
 # this one; otherwise the one written in internal/api/version.go.
-SPEC ?= ../test.streamingchasers.com/public/api/v1/openapi.yaml
+SPEC ?= ../test.streamingchasers.com/docs/openapi.yaml
 API_VERSION ?= $(shell awk '/^  version:/ {gsub(/"/, "", $$2); print $$2; exit}' $(SPEC) 2>/dev/null)
 LDFLAGS := -s -w -X main.version=$(VERSION)
 ifneq ($(API_VERSION),)

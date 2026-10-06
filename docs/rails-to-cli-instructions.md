@@ -118,3 +118,13 @@ $ streamingchasers batches preview --pro ASCAP --period <id>   # still: do not c
 If the handshake says `ahead`, stop — the deploy hasn't happened yet.
 Anything that still disagrees after that, write it up the same way as
 `rails-handoff.md`; that loop worked.
+
+## Spec location change (minor)
+
+The spec file moved in the Rails repo: it is now
+`test.streamingchasers.com/docs/openapi.yaml` (it was under `public/`).
+The URL is unchanged - `GET /api/v1/openapi.yaml` - but it is now served
+by a controller with `Cache-Control: max-age=3600, public` instead of
+public/'s one-year static header, so a fetched spec is at most an hour
+stale. If the CLI reads the file from disk at build time, update the
+path.

@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/mdchaney/streamingchasers-cli/internal/api"
 )
 
 // Roles, weakest first.
@@ -129,6 +131,7 @@ type Server struct {
 	SendFails bool
 	// APIVersion is the version of the API the server speaks, which it
 	// advertises on every answer; "" is a server from before it did.
+	// It starts as the version this program was built for.
 	APIVersion string
 
 	Users     []*User
@@ -156,7 +159,7 @@ func New() *Server {
 		Scopes:         []string{"catalog", "catalog_write", "catalog_admin"},
 		AccessTokenTTL: time.Hour,
 		PollsToFinish:  1,
-		APIVersion:     "1.1.0",
+		APIVersion:     api.SpecVersion,
 		clients:        map[string]*oauthClient{},
 		grants:         map[string]*oauthGrant{},
 		nextID:         1000,

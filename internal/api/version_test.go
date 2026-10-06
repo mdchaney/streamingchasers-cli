@@ -11,7 +11,7 @@ import (
 // as it does in development, the two are compared, so that a change to
 // the API is followed here and the number bumped with it.
 func TestSpecVersionMatchesTheDescription(t *testing.T) {
-	data, err := os.ReadFile("../../../test.streamingchasers.com/public/api/v1/openapi.yaml")
+	data, err := os.ReadFile("../../../test.streamingchasers.com/docs/openapi.yaml")
 	if err != nil {
 		t.Skip("the server's OpenAPI description is not beside this repository")
 	}

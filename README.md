@@ -427,8 +427,8 @@ with every request, and the server says how the two stand:
 
 ```console
 $ streamingchasers version
-streamingchasers 1.0.0 (API 1.1.0)
-https://app.streamingchasers.com speaks API 1.1.0: the same as this program
+streamingchasers 1.0.0 (API 1.1.4)
+https://app.streamingchasers.com speaks API 1.1.4: the same as this program
 ```
 
 When the server is newer, every command ends with a note to upgrade. When
@@ -478,9 +478,10 @@ $ make release    # binaries for macOS, Linux and Windows in ./dist
 | `internal/output` | Tables, CSV and JSON |
 | `internal/fakeserver` | A stand-in for the Rails application, for the tests |
 
-The CLI is built against `public/api/v1/openapi.yaml` in the server
-repository, which a test there keeps truthful, and against its jbuilder
-views for the shape of each record. The description's `info.version` is
+The CLI is built against the server's OpenAPI description, `docs/openapi.yaml`
+in its repository and `/api/v1/openapi.yaml` on any server, which a test
+there keeps truthful, and against its jbuilder views for the shape of each
+record. The description's `info.version` is
 the API version this program declares: `make build` reads it from the
 description when the server's repository is beside this one, and
 `internal/api/version.go` holds it otherwise. A test fails when the two

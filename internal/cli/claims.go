@@ -524,8 +524,10 @@ func (a *App) newMissingCodesCmd() *cobra.Command {
 func (a *App) newChaseCmd() *cobra.Command {
 	cmd := group("chase", "Chase scores: which series to chase a PRO about first", `Chase scores. For each series a company has placements in, and each PRO,
 the money and views observed and how many placements are paid and unpaid.
-Series the PRO rolls up, and series that are fully paid, are left out of
-the list, with counts.
+Left out of the list, with counts, are series that are fully paid and
+series whose every unpaid placement the PRO has rolled up; a series with a
+rollup but other claimable episodes still lists, as a batch would take
+them.
 
 The scores are computed in the background; 'recompute' refreshes them.`)
 
