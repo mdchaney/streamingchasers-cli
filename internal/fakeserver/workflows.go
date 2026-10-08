@@ -654,6 +654,10 @@ func (s *Server) batches(req *request, rest []string) {
 		writeJSON(req.w, http.StatusOK, record{"broadcast_delivery_batches": page, "pagination": pagination})
 		return
 	}
+	if rest[0] == "paid_report" {
+		s.paidReport(req)
+		return
+	}
 	var batch record
 	for _, candidate := range company.Batches {
 		if str(candidate["id"]) == rest[0] {
@@ -698,6 +702,99 @@ func (s *Server) batches(req *request, rest []string) {
 	default:
 		routingError(req.w)
 	}
+}
+
+// paidReport is ClaimsPaidReport: per sent sheet, what it claimed and
+// what has been paid; then the paid placements, most recently paid
+// first, each once however many sheets claimed it.
+func (s *Server) paidReport(req *request) {
+	company := req.company
+	var pro record
+	if selected := req.r.URL.Query().Get("pro_id"); selected != "" {
+		pro = s.pro(selected)
+		for _, candidate := range s.Pros {
+			if pro == nil && strings.EqualFold(str(candidate["abbreviation"]), selected) {
+				pro = candidate
+			}
+		}
+		if pro == nil {
+			notFound(req.w)
+			return
+		}
+	}
+	rowByID := func(proID int64, id any) record {
+		for _, row := range company.Unpaid[proID] {
+			if mustInt(row["id"]) == mustInt(id) {
+				return row
+			}
+		}
+		return nil
+	}
+	sheets := []record{}
+	type claim struct {
+		row    record
+		proID  int64
+		first  string
+		sheets []any
+	}
+	claims := map[int64]*claim{}
+	for i := len(company.Batches) - 1; i >= 0; i-- {
+		batch := company.Batches[i]
+		if batch["sent_at"] == nil || (pro != nil && mustInt(batch["pro_id"]) != mustInt(pro["id"])) {
+			continue
+		}
+		claimed, paid, after := 0, 0, 0
+		for _, id := range listOfAny(batch["rows"]) {
+			row := rowByID(mustInt(batch["pro_id"]), id)
+			if row == nil {
+				continue
+			}
+			claimed++
+			if row["paid_at"] != nil {
+				paid++
+				if str(row["paid_at"]) > str(batch["sent_at"]) {
+					after++
+				}
+				c := claims[mustInt(id)]
+				if c == nil {
+					c = &claim{row: row, proID: mustInt(batch["pro_id"]), first: str(batch["sent_at"])}
+					claims[mustInt(id)] = c
+				}
+				if str(batch["sent_at"]) < c.first {
+					c.first = str(batch["sent_at"])
+				}
+				c.sheets = append(c.sheets, batch["id"])
+			}
+		}
+		period := s.period(mustInt(batch["pro_id"]), batch["broadcast_payment_period_id"])
+		sheets = append(sheets, record{"id": batch["id"], "pro": s.pro(batch["pro_id"])["abbreviation"], "payment_period": record{"id": period["id"], "name": period["name"]},
+			"sent_at": batch["sent_at"], "claimed": claimed, "paid": paid, "paid_after_send": after,
+			"url": fmt.Sprintf("%s/companies/%d/broadcast_delivery_batches/%v", req.base, company.ID, batch["id"])})
+	}
+	var placements []record
+	for _, c := range claims {
+		i := findExternal(company.Works, str(c.row["work_external_id"]))
+		title := any(nil)
+		if i >= 0 {
+			title = company.Works[i]["title"]
+		}
+		var production any
+		if c.row["production_title"] != nil {
+			production = record{"type": "Episode", "id": c.row["series_id"], "title": c.row["production_title"]}
+		}
+		placements = append(placements, record{
+			"work": record{"id": c.row["work_external_id"], "title": title}, "production": production,
+			"streamer": c.row["streamer"], "initial_air_date": c.row["air_date"], "pro": s.pro(c.proID)["abbreviation"],
+			"sheet_ids": c.sheets, "first_claimed_at": c.first, "paid_at": c.row["paid_at"], "paid_after_claim": str(c.row["paid_at"]) > c.first,
+		})
+	}
+	sort.SliceStable(placements, func(i, j int) bool { return str(placements[i]["paid_at"]) > str(placements[j]["paid_at"]) })
+	page, pagination := paginate(req.r, placements, 0)
+	out := record{"sheets": sheets, "paid_placements": page, "pagination": pagination}
+	if pro != nil {
+		out["pro"] = pro["abbreviation"]
+	}
+	writeJSON(req.w, http.StatusOK, out)
 }
 
 func (s *Server) chaseScores(req *request, rest []string, pro record) {

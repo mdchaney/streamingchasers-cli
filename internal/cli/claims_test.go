@@ -72,6 +72,27 @@ func TestClaimsLoop(t *testing.T) {
 	h.fails(ExitUsage, "--variant must be missing-codes", "batches", "csv", id, "--variant", "x")
 
 	want(t, h.ok("batches", "missing-codes", "--pro", "ASCAP", "--period", "12").stdout, "work,title,production", "W-1001")
+
+	// What came of the sheet: nothing yet, then a payment.
+	r = h.ok("batches", "paid-report")
+	want(t, r.stdout, "SHEET", "CLAIMED", "PAID AFTER SEND", id, "ASCAP", "2026 Q1", "1", "0")
+	want(t, r.stderr, "No paid placements.")
+	h.server.Pay(2, 7001)
+	r = h.ok("batches", "paid-report", "--pro", "ascap")
+	want(t, r.stdout, "WORK", "AFTER CLAIM", "SHEETS", "W-999", "Drunken Daisy", "Big Movie", "Netflix", "yes", id)
+	if req := h.lastRequest("GET", "/api/v1/companies/2/broadcast_delivery_batches/paid_report"); !strings.Contains(req.Query, "pro_id=ASCAP") {
+		t.Errorf("query = %q", req.Query)
+	}
+	want(t, h.ok("batches", "paid-report", "--sheet", id).stdout, "W-999")
+	want(t, h.ok("batches", "paid-report", "--sheet", "999").stderr, "No sent sheets.", "No paid placements.")
+	report := decode[map[string]any](t, h.ok("batches", "paid-report", "-o", "json"))
+	if len(report["sheets"].([]any)) != 1 || len(report["paid_placements"].([]any)) != 1 {
+		t.Errorf("json output should hold the sheets and the placements, got %v", report)
+	}
+	if n := len(lines(h.ok("batches", "paid-report", "-o", "jsonl").stdout)); n != 1 {
+		t.Errorf("jsonl: %d lines", n)
+	}
+	h.fails(ExitNotFound, "Not found", "batches", "paid-report", "--pro", "SACEM")
 }
 
 func TestChaseScores(t *testing.T) {

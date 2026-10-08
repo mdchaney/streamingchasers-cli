@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/mdchaney/streamingchasers-cli/internal/api"
@@ -193,8 +195,157 @@ exactly what create will take.
 		},
 	}
 
-	cmd.AddCommand(list, get, a.newBatchPreviewCmd(), a.newBatchCreateCmd(), a.newBatchCSVCmd(), a.newMissingWorksCmd(), a.newMissingCodesCmd())
+	cmd.AddCommand(list, get, a.newBatchPreviewCmd(), a.newBatchCreateCmd(), a.newBatchCSVCmd(), a.newPaidReportCmd(), a.newMissingWorksCmd(), a.newMissingCodesCmd())
 	return cmd
+}
+
+func (a *App) newPaidReportCmd() *cobra.Command {
+	var pro string
+	var sheet int64
+	opts := &listOptions{}
+	cmd := &cobra.Command{
+		Use:   "paid-report",
+		Short: "What got paid that was on a sent claims sheet",
+		Long: `What came of the claims sheets that were sent: per sheet, how many
+placements it claimed and how many have been paid since, at all and
+after the sheet went out; then the paid placements themselves, most
+recently paid first, each with the sheets that claimed it and whether
+the payment came after the claim (no means it was already on file when
+the sheet went out).
+
+A placement claimed on two sheets is one row. --sheet narrows the rows
+to those one sheet claimed, reading every page to do it; --pro narrows
+everything to one PRO.`,
+		Example: `  streamingchasers batches paid-report --pro ASCAP
+  streamingchasers batches paid-report --sheet 34 -o csv`,
+		Args: noArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if sheet > 0 && !cmd.Flags().Changed("all") {
+				opts.all = true
+			}
+			if err := opts.validate(cmd); err != nil {
+				return err
+			}
+			if pro != "" {
+				segment, err := proSegment(pro)
+				if err != nil {
+					return err
+				}
+				opts.extra = url.Values{"pro_id": {segment}}
+			}
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			path, err := s.companyPath(cmd.Context(), "broadcast_delivery_batches", "paid_report")
+			if err != nil {
+				return err
+			}
+			page, err := a.fetchList(cmd.Context(), s, path, "paid_placements", opts)
+			if err != nil {
+				return err
+			}
+			sheets, _ := listOf(mustJSON(extras(page)), "sheets")
+			if sheet > 0 {
+				page.Items = onSheet(page.Items, sheet)
+				page.Paginated = false
+				sheets = withID(sheets, sheet)
+			}
+			// As JSON the report is the whole of what the server said:
+			// the sheets and the placements together.
+			if a.globals.output == output.JSON {
+				report := output.NewRecord()
+				report.Set("sheets", json.RawMessage(mustJSONList(sheets)))
+				report.Set("paid_placements", json.RawMessage(mustJSONList(page.Items)))
+				return output.WriteJSON(a.Out, mustJSON(report))
+			}
+			if a.globals.output == output.Table {
+				sheetColumns := []output.Column{
+					{Header: "SHEET", Key: "id"},
+					{Header: "PRO", Key: "pro"},
+					{Header: "PERIOD", Value: nested("payment_period", "name"), Max: 30},
+					{Header: "SENT", Value: timestamp("sent_at")},
+					{Header: "CLAIMED", Key: "claimed"},
+					{Header: "PAID", Key: "paid"},
+					{Header: "PAID AFTER SEND", Key: "paid_after_send"},
+				}
+				if err := a.renderItems(sheets, sheetColumns, "sent sheets"); err != nil {
+					return err
+				}
+				fmt.Fprintln(a.Out)
+			}
+			columns := []output.Column{
+				{Header: "WORK", Value: nested("work", "id")},
+				{Header: "TITLE", Value: nested("work", "title"), Max: 30},
+				{Header: "PRODUCTION", Value: nested("production", "title"), Max: 35},
+				{Header: "STREAMER", Key: "streamer", Max: 20},
+				{Header: "PRO", Key: "pro"},
+				{Header: "AIRED", Key: "initial_air_date"},
+				{Header: "PAID", Value: timestamp("paid_at")},
+				{Header: "AFTER CLAIM", Value: yesNo("paid_after_claim")},
+				{Header: "SHEETS", Key: "sheet_ids"},
+			}
+			return a.renderList(page, columns, "paid placements", opts)
+		},
+	}
+	cmd.Flags().StringVar(&pro, "pro", "", "one PRO's sheets and placements, by ID or abbreviation")
+	cmd.Flags().Int64Var(&sheet, "sheet", 0, "only the placements this sheet claimed")
+	addListFlags(cmd, opts)
+	return cmd
+}
+
+// onSheet keeps the paid placements that the sheet claimed.
+func onSheet(items []json.RawMessage, sheet int64) []json.RawMessage {
+	var kept []json.RawMessage
+	for _, item := range items {
+		record, err := output.ParseRecord(item)
+		if err != nil {
+			continue
+		}
+		for _, id := range listOfIDs(record.Value("sheet_ids")) {
+			if id == sheet {
+				kept = append(kept, item)
+				break
+			}
+		}
+	}
+	return kept
+}
+
+// withID keeps the record with the id.
+func withID(items []json.RawMessage, id int64) []json.RawMessage {
+	for _, item := range items {
+		if record, err := output.ParseRecord(item); err == nil && record.String("id") == strconv.FormatInt(id, 10) {
+			return []json.RawMessage{item}
+		}
+	}
+	return nil
+}
+
+// mustJSONList joins raw JSON records into one array.
+func mustJSONList(items []json.RawMessage) []byte {
+	var b strings.Builder
+	b.WriteByte('[')
+	for i, item := range items {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.Write(item)
+	}
+	b.WriteByte(']')
+	return []byte(b.String())
+}
+
+func listOfIDs(v any) []int64 {
+	var ids []int64
+	if list, ok := v.([]any); ok {
+		for _, item := range list {
+			if n, err := strconv.ParseInt(output.Format(item), 10, 64); err == nil {
+				ids = append(ids, n)
+			}
+		}
+	}
+	return ids
 }
 
 // thresholds are the chase-score floors a batch can be narrowed by.

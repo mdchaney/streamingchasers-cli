@@ -200,6 +200,22 @@ func (s *Server) CountRequests(method, prefix string) int {
 	return n
 }
 
+// Pay marks a claimable row of a company paid by its PRO, as a royalty
+// statement that matched it would.
+func (s *Server) Pay(companyID, rowID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, rows := range s.Company(companyID).Unpaid {
+		for _, row := range rows {
+			if mustInt(row["id"]) == rowID {
+				// A moment after any sheet sent in this same second, so
+				// that the payment counts as coming after the claim.
+				row["paid_at"] = time.Now().Add(time.Second).Format(time.RFC3339)
+			}
+		}
+	}
+}
+
 // Company returns the company with the given ID, or nil.
 func (s *Server) Company(id int64) *Company {
 	for _, company := range s.Companies {

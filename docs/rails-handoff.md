@@ -18,6 +18,7 @@ was addressed on the application's `mdc` branch (commits `b871f06`,
 | 6 | CWR destinations | `streamingchasers cwr destinations list` |
 | 7 | `auth_token` scoping, `mark_sent=0` | `account token` says when it needs `--admin`; `batches csv --no-mark-sent` |
 | + | The version handshake (new, from [rails-to-cli-instructions.md](rails-to-cli-instructions.md)) | Sends `X-Client-API-Version`, reads `X-API-Version-Status`; `version` shows both; errors against an older server say so |
+| + | A claims paid report (API 1.6.0). It is collection-level, `broadcast_delivery_batches/paid_report`, rather than per batch, because a placement claimed on two sheets is one row; agreed, and no per-batch route is wanted | `batches paid-report [--pro X] [--sheet ID]`; `--sheet` filters the rows client-side |
 
 The CLI has still **not been run against the application itself**; the
 section at the end says what to try first. What follows is the request

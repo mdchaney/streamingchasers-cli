@@ -318,6 +318,12 @@ exactly what `create` takes, less any rows you name with `--exclude`, and
 `create` asks before it goes ahead; a script passes `--yes`. A period that
 is no longer available is a conflict, exit code 7.
 
+`batches paid-report` says what came of the sheets that were sent: per
+sheet, how many placements it claimed and how many have been paid since,
+and the paid placements themselves, each flagged with whether the payment
+came after the claim. `--pro` narrows it to one PRO and `--sheet ID` to the
+placements one sheet claimed.
+
 Downloading the sheet with `batches csv` marks the batch as sent;
 `--no-mark-sent` downloads it to check first, and a later plain download
 marks it. `--variant missing-codes` downloads instead the companion sheet
@@ -427,8 +433,8 @@ with every request, and the server says how the two stand:
 
 ```console
 $ streamingchasers version
-streamingchasers 1.0.0 (API 1.5.0)
-https://app.streamingchasers.com speaks API 1.5.0: the same as this program
+streamingchasers 1.0.0 (API 1.6.0)
+https://app.streamingchasers.com speaks API 1.6.0: the same as this program
 ```
 
 When the server is newer, every command ends with a note to upgrade. When
