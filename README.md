@@ -427,8 +427,8 @@ with every request, and the server says how the two stand:
 
 ```console
 $ streamingchasers version
-streamingchasers 1.0.0 (API 1.3.0)
-https://app.streamingchasers.com speaks API 1.3.0: the same as this program
+streamingchasers 1.0.0 (API 1.4.0)
+https://app.streamingchasers.com speaks API 1.4.0: the same as this program
 ```
 
 When the server is newer, every command ends with a note to upgrade. When
