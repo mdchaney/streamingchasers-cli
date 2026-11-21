@@ -50,7 +50,7 @@ func cwrConnectionsResource() *resource {
 			{Header: "PRO", Value: nested("destination", "pro")},
 			{Header: "USERNAME", Key: "server_username", Max: 20},
 			{Header: "SENDER", Key: "cwr_sender_name", Max: 25},
-			{Header: "ACTIVE", Value: yesNo("active")},
+			{Header: "ACTIVE", Value: connectionActive},
 			{Header: "QUEUED", Key: "queued_tickets"},
 		},
 		fields: []field{
@@ -94,10 +94,27 @@ func cwrConnectionsResource() *resource {
 	}
 }
 
+// connectionActive is whether a connection is in use: its own flag, and
+// a note when its destination has been retired, which takes the
+// connection out of service whatever its flag says.
+func connectionActive(r *output.Record) string {
+	active := yesNo("active")(r)
+	if nested("destination", "active")(r) == "false" {
+		return active + ", destination retired"
+	}
+	return active
+}
+
 func cwrDestinationsResource() *resource {
 	return &resource{
 		name: "destinations", singular: "cwr_destination", label: "CWR destination", segment: "cwr_destinations",
-		short:    "The PRO delivery servers a connection can point at",
+		short: "The PRO delivery servers a connection can point at",
+		long: `List the PRO delivery servers a connection can point at.
+
+A destination that is not active has been retired: its files and
+acknowledgments stay readable, but no connection can be made to it and
+no tickets, files, sends or acknowledgment downloads happen on the
+connections it has.`,
 		scope:    scopeGlobal,
 		idArg:    "ID",
 		readOnly: true,
@@ -106,6 +123,7 @@ func cwrDestinationsResource() *resource {
 			{Header: "ID", Key: "id"},
 			{Header: "NAME", Key: "name", Max: 40},
 			{Header: "PRO", Key: "pro"},
+			{Header: "ACTIVE", Value: yesNo("active")},
 		},
 	}
 }

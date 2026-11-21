@@ -367,6 +367,13 @@ or changing one takes a company admin and, with a browser sign-in,
 accepted and never shown again; give it as `--password @file` to keep it
 out of your shell history.
 
+A destination can be retired, as GEMA's was when it moved behind ICE:
+`cwr destinations list` shows it inactive, and `cwr connections list`
+marks its connections. Their files and acknowledgments stay readable, but
+no new connection can point at it and queueing tickets, making or sending
+files and fetching acknowledgments on its connections fail with exit code
+7 and the reason.
+
 ## Output
 
 `--output` (`-o`) chooses the format:

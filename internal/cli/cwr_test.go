@@ -36,6 +36,26 @@ func TestCwrConnections(t *testing.T) {
 	as(t, editorToken).fails(ExitForbidden, "Forbidden", "cwr", "connections", "delete", "3", "--yes")
 }
 
+// A retired destination keeps its history readable and refuses anything
+// new, which the server says with a 409.
+func TestRetiredCwrDestination(t *testing.T) {
+	h := signedIn(t)
+	r := h.ok("cwr", "destinations", "list")
+	want(t, r.stdout, "ACTIVE", "ASCAP Delivery", "yes", "GEMA Delivery", "no")
+	want(t, h.ok("cwr", "connections", "list").stdout, "yes, destination retired")
+
+	h.fails(ExitInvalid, "Cwr destination is retired", "cwr", "connections", "create", "--destination", "GEMA", "--username", "u", "--password", "p", "--inbound", "/in", "--sender-name", "FM", "--sender-ipi", "1")
+	h.ok("cwr", "connections", "update", "4", "--sender-code", "FRV") // an existing connection stays editable
+
+	h.fails(ExitConflict, "GEMA Delivery has been retired - its server is no longer polled", "cwr", "connections", "download-acks", "4")
+	h.fails(ExitConflict, "no new CWR activity is accepted on this connection", "cwr", "tickets", "candidates", "--connection", "4")
+	h.fails(ExitConflict, "has been retired", "cwr", "tickets", "queue", "--connection", "4", "--reason", "Late", "W-999")
+	h.fails(ExitConflict, "has been retired", "cwr", "files", "candidates", "--connection", "4")
+	h.fails(ExitConflict, "has been retired", "cwr", "files", "create", "--connection", "4", "W-999")
+	want(t, h.ok("cwr", "files", "list", "--connection", "4").stderr, "No CWR files.")
+	want(t, h.ok("cwr", "acks", "list", "--connection", "4").stderr, "No acknowledgment files.")
+}
+
 func TestCwrWorkflow(t *testing.T) {
 	h := signedIn(t)
 	r := h.ok("cwr", "tickets", "candidates", "--connection", "3")

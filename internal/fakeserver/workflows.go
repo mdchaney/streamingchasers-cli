@@ -954,13 +954,46 @@ func (s *Server) renderConnection(req *request, c record) record {
 		}
 	}
 	return record{
-		"id": c["id"], "destination": record{"id": c["cwr_destination_id"], "name": c["destination_name"], "pro": c["destination_pro"]},
+		"id": c["id"], "destination": record{"id": c["cwr_destination_id"], "name": c["destination_name"], "pro": c["destination_pro"], "active": s.destinationActive(c)},
 		"server_username": c["server_username"], "outbound_directory": c["outbound_directory"], "inbound_directory": c["inbound_directory"],
 		"cwr_sender_name": c["cwr_sender_name"], "cwr_sender_ipi_number": c["cwr_sender_ipi_number"], "cwr_sender_filename_code": c["cwr_sender_filename_code"],
 		"minimum_work_count": c["minimum_work_count"], "filename_serial_offset": c["filename_serial_offset"], "active": c["active"], "created_at": c["created_at"],
 		"queued_tickets": queued,
 	}
 }
+
+// cwrDestination is the destination with the ID, or nil.
+func (s *Server) cwrDestination(id any) record {
+	for _, d := range s.Reference["cwr_destinations"] {
+		if !blank(id) && mustInt(d["id"]) == mustInt(id) {
+			return d
+		}
+	}
+	return nil
+}
+
+// destinationActive is whether a connection's destination is still in
+// service.  A retired destination takes its connections out of service.
+func (s *Server) destinationActive(c record) bool {
+	d := s.cwrDestination(c["cwr_destination_id"])
+	return d == nil || d["active"] != false
+}
+
+// retired refuses new CWR activity on a connection to a retired
+// destination, as the server does, with a 409 and its message.  It
+// reports whether it did.
+func (s *Server) retired(req *request, c record, what string) bool {
+	if s.destinationActive(c) {
+		return false
+	}
+	message(req.w, http.StatusConflict, fmt.Sprintf("%s has been retired - %s", c["destination_name"], what))
+	return true
+}
+
+const (
+	retiredPolling  = "its server is no longer polled"
+	retiredActivity = "no new CWR activity is accepted on this connection"
+)
 
 func (s *Server) connection(company *Company, id string) (record, int) {
 	for i, c := range company.Connections {
@@ -996,11 +1029,12 @@ func (s *Server) cwrConnections(req *request, rest []string) {
 			for k, v := range params {
 				c[k] = v
 			}
-			if problems := s.validateConnection(c); len(problems) > 0 {
+			if problems := s.validateConnection(c, true); len(problems) > 0 {
 				invalid(req.w, problems...)
 				return
 			}
-			c["destination_name"], c["destination_pro"], c["pro_id"] = "ASCAP Delivery", "ASCAP", 10
+			d := s.cwrDestination(c["cwr_destination_id"])
+			c["destination_name"], c["destination_pro"], c["pro_id"] = d["name"], d["pro"], 10
 			company.Connections = append(company.Connections, c)
 			writeJSON(req.w, http.StatusCreated, s.renderConnection(req, c))
 		default:
@@ -1036,7 +1070,8 @@ func (s *Server) cwrConnections(req *request, rest []string) {
 			for k, v := range params {
 				updated[k] = v
 			}
-			if problems := s.validateConnection(updated); len(problems) > 0 {
+			_, destinationChanged := params["cwr_destination_id"]
+			if problems := s.validateConnection(updated, destinationChanged); len(problems) > 0 {
 				invalid(req.w, problems...)
 				return
 			}
@@ -1068,6 +1103,9 @@ func (s *Server) cwrConnections(req *request, rest []string) {
 		if !req.authorize(Editor) {
 			return
 		}
+		if s.retired(req, c, retiredPolling) {
+			return
+		}
 		writeJSON(req.w, http.StatusAccepted, record{"message": "Acknowledgment download queued"})
 	case "bulk_tickets":
 		s.bulkTickets(req, rest[1:], c)
@@ -1080,15 +1118,20 @@ func (s *Server) cwrConnections(req *request, rest []string) {
 	}
 }
 
-func (s *Server) validateConnection(c record) []string {
+// validateConnection checks a connection.  The destination is checked
+// when it is being set: an existing connection to a since-retired
+// destination stays valid, as on the server.
+func (s *Server) validateConnection(c record, destinationChanged bool) []string {
 	var problems []string
 	for key, label := range map[string]string{"server_username": "Server username", "server_password": "Server password", "inbound_directory": "Inbound directory", "cwr_sender_name": "Cwr sender name", "cwr_sender_ipi_number": "Cwr sender ipi number"} {
 		if blank(c[key]) {
 			problems = append(problems, label+" can't be blank")
 		}
 	}
-	if blank(c["cwr_destination_id"]) {
+	if d := s.cwrDestination(c["cwr_destination_id"]); d == nil {
 		problems = append(problems, "Cwr destination must exist")
+	} else if destinationChanged && d["active"] == false {
+		problems = append(problems, "Cwr destination is retired and no longer accepts CWR files")
 	}
 	sort.Strings(problems)
 	return problems
@@ -1121,6 +1164,9 @@ func (s *Server) unsentWorks(company *Company, connectionID int64) []record {
 
 func (s *Server) bulkTickets(req *request, rest []string, c record) {
 	if !req.authorize(Editor) {
+		return
+	}
+	if s.retired(req, c, retiredActivity) {
 		return
 	}
 	company := req.company
@@ -1239,7 +1285,7 @@ func (s *Server) cwrFiles(req *request, rest []string, c record) {
 		page, pagination := paginate(req.r, out, 0)
 		writeJSON(req.w, http.StatusOK, record{"cwr_files": page, "pagination": pagination})
 	case len(rest) == 1 && rest[0] == "candidates":
-		if !req.authorize(Viewer) {
+		if !req.authorize(Viewer) || s.retired(req, c, retiredActivity) {
 			return
 		}
 		candidates := []record{}
@@ -1253,7 +1299,7 @@ func (s *Server) cwrFiles(req *request, rest []string, c record) {
 		}
 		writeJSON(req.w, http.StatusOK, record{"candidates": candidates})
 	case len(rest) == 0 && req.r.Method == http.MethodPost:
-		if !req.authorize(Editor) {
+		if !req.authorize(Editor) || s.retired(req, c, retiredActivity) {
 			return
 		}
 		var ids []any
@@ -1302,7 +1348,7 @@ func (s *Server) cwrFiles(req *request, rest []string, c record) {
 			}
 			sendFile(req.w, str(f["cwr_file_name"]), "text/plain", []byte(str(f["contents"])))
 		case len(rest) == 2 && rest[1] == "send_to_pro" && req.r.Method == http.MethodPost:
-			if !req.authorize(Editor) {
+			if !req.authorize(Editor) || s.retired(req, c, retiredActivity) {
 				return
 			}
 			if f["sent_at"] != nil {

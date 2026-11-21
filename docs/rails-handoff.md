@@ -178,6 +178,15 @@ order of use to a CLI user:
   `q[owner_account]` or distribution-period filter; the CLI would expose
   each as a flag. Until then the category and flow-through are shown but
   cannot be filtered on.
+- **Retired CWR destinations (20 November 2026), followed.** The CLI
+  shows `active` on `cwr_destinations` and on a connection's
+  `destination`, marks the connections of a retired destination, and
+  passes the 409 through with its message; its fake has a retired GEMA
+  destination. Asked for: the spec to say that `download_acks`,
+  `bulk_tickets` (both actions), `cwr_files` `candidates`, `create` and
+  `send_to_pro` answer 409 on a retired destination, and that
+  `cwr_connections` `create`/`update` answer 422 when pointed at one.
+  Another view change under 1.6.0: the bump is overdue.
 - **`detect` for statements**: `POST /my/.../royalty_statements/detect`
   (the sniffer behind the bulk dropzone) would let `royalty-statements
   create` go without `--source` when the file says which PRO it is from.

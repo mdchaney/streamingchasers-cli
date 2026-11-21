@@ -279,7 +279,7 @@ func (s *Server) seed() {
 		"tis_territory_types":  {{"id": 1, "name": "Country", "abbreviation": "C"}},
 		"production_companies": {{"id": 1, "name": "Big Studio"}},
 		"streamers":            {{"id": 1, "name": "Netflix", "tracked": true}, {"id": 2, "name": "Hulu", "tracked": false}},
-		"cwr_destinations":     {{"id": 2, "name": "ASCAP Delivery", "pro": "ASCAP"}},
+		"cwr_destinations":     {{"id": 2, "name": "ASCAP Delivery", "pro": "ASCAP", "active": true}, {"id": 4, "name": "GEMA Delivery", "pro": "GEMA", "active": false}},
 		"movies":               {{"id": 300, "title": "Big Movie", "imdb_id": "tt0000300", "reelgood_id": nil}},
 		"series":               {{"id": 500, "title": "Big Series", "imdb_id": "tt0000500", "reelgood_id": nil}, {"id": 600, "title": "Bundle Show", "imdb_id": "tt0000600", "reelgood_id": nil}},
 		"episodes":             {{"id": 5001, "title": "Pilot", "imdb_id": "tt0005001", "reelgood_id": nil, "season_number": 1, "episode_number": 1, "series_id": 500}},
@@ -329,6 +329,8 @@ func (s *Server) seed() {
 		},
 		Connections: []record{
 			{"id": 3, "cwr_destination_id": 2, "destination_name": "ASCAP Delivery", "destination_pro": "ASCAP", "pro_id": 10, "server_username": "frivolous", "server_password": "hunter2", "outbound_directory": "/out", "inbound_directory": "/in", "cwr_sender_name": "FRIVOLOUS MUSIC", "cwr_sender_ipi_number": "123456789", "cwr_sender_filename_code": "FRV", "minimum_work_count": 1, "filename_serial_offset": 0, "active": true, "created_at": seedTime},
+			// A connection made before its destination was retired.
+			{"id": 4, "cwr_destination_id": 4, "destination_name": "GEMA Delivery", "destination_pro": "GEMA", "pro_id": 14, "server_username": "frivolous-de", "server_password": "hunter2", "outbound_directory": "/out", "inbound_directory": "/in", "cwr_sender_name": "FRIVOLOUS MUSIC", "cwr_sender_ipi_number": "123456789", "cwr_sender_filename_code": "FRV", "minimum_work_count": 1, "filename_serial_offset": 0, "active": true, "created_at": seedTime},
 		},
 		RoyaltyStatements: []*Upload{{
 			Fields: record{"id": 31, "royalty_source_id": 1, "royalty_file_format_id": 1, "notes": "Q4 2025", "processed_at": seedTime, "success": true, "error_list": nil, "starts_at": "2025-10-01", "ends_at": "2025-12-31", "declared_total": "15.50", "loaded_total": "15.50", "created_at": seedTime, "updated_at": seedTime, "user_id": 1},
