@@ -96,8 +96,15 @@ func TestSalesUpload(t *testing.T) {
 func TestRoyaltyStatements(t *testing.T) {
 	h := signedIn(t)
 	r := h.ok("royalty-statements", "list")
-	want(t, r.stdout, "SOURCE", "LINES", "31", "ASCAP Domestic", "ASCAP CSV", "2", "completed")
-	h.fails(ExitUsage, "--source is required", "royalty-statements", "create", "--file", h.write("s.csv", "a\n1\n"))
+	want(t, r.stdout, "SOURCE", "LINES", "LOADED", "DECLARED", "RECONCILED", "31", "ASCAP Domestic", "ASCAP CSV", "2", "15.50", "yes", "completed")
+	// Without --source the server is asked what the file is; a file it
+	// does not recognise needs --source.
+	h.fails(ExitUsage, "--source is required: the server does not recognise s.csv", "royalty-statements", "create", "--file", h.write("s.csv", "a\n1\n"))
+	r = h.ok("royalty-statements", "create", "--file", h.write("q1.csv", "ASCAP Domestic Statement\n1,2\n"), "--wait")
+	want(t, r.stderr, "q1.csv looks like a ASCAP Domestic statement (ascap_csv).", "Uploaded q1.csv")
+	want(t, r.stdout, "royalty_source:", "ASCAP Domestic")
+	detect := h.lastRequest("POST", "/api/v1/companies/2/royalty_statements/detect")
+	want(t, string(detect.Body), `name="head"; filename="q1.csv"`, "ASCAP Domestic Statement", `name="filename"`)
 
 	r = h.ok("royalty-statements", "create", "--file", h.write("bmi.csv", "line,amount\n1,2\n"), "--source", "BMI", "--format", "2", "--wait")
 	want(t, r.stdout, "status:", "completed", "royalty_source:", "BMI")
@@ -112,9 +119,7 @@ func TestRoyaltyStatements(t *testing.T) {
 		t.Errorf("unmatched names should come first:\n%s", r.stdout)
 	}
 
-	// The totals and whether they reconcile are in get, not the list.
 	want(t, h.ok("royalty-statements", "get", "31").stdout, "declared_total:", "15.50", "loaded_total:", "reconciled:", "true")
-	unwanted(t, h.ok("royalty-statements", "list", "-o", "json").stdout, "declared_total", "reconciled")
 	want(t, h.ok("royalty-statements", "records", "31").stdout, "9001", "9002")
 	want(t, h.ok("royalty-statements", "records", "31", "--issues", "1").stdout, "9002")
 	want(t, h.ok("royalty-statements", "download", "31").stdout, "line,amount")
@@ -122,6 +127,30 @@ func TestRoyaltyStatements(t *testing.T) {
 	r = h.ok("royalty-statements", "reprocess", "31", "--wait")
 	want(t, r.stderr, "Royalty statement 31 is being processed again.", "Processing completed")
 	h.fails(ExitUsage, `unknown command "delete"`, "royalty-statements", "delete", "31")
+}
+
+func TestStatementCoverage(t *testing.T) {
+	h := signedIn(t)
+	r := h.ok("royalty-statements", "coverage")
+	want(t, r.stdout, "SOURCE", "ACCOUNT", "CADENCE", "COVERED", "UNRECONCILED", "MISSING",
+		"ASCAP Domestic", "Frivolous Music (871486996)", "quarterly", "2025Q1", "45", "2025Q2, 2025Q3",
+		"BMI, all accounts", "1")
+	if r.stderr != "" {
+		t.Errorf("standard error = %q", r.stderr)
+	}
+
+	r = h.ok("royalty-statements", "coverage", "--missing")
+	want(t, r.stdout, "PERIOD", "2025Q2", "2025Q3", "871486996")
+	unwanted(t, r.stdout, "BMI")
+	if got := lines(r.stdout); len(got) != 3 {
+		t.Errorf("want a header and two rows:\n%s", r.stdout)
+	}
+	want(t, h.ok("royalty-statements", "coverage", "-o", "json").stdout, `"declared_periods"`, `"reconciles": false`)
+	want(t, h.ok("royalty-statements", "coverage", "--missing", "-o", "jsonl").stdout, `"period":"2025Q2"`)
+
+	// A company without expectations is told that coverage is not set up.
+	r = h.ok("royalty-statements", "coverage", "-c", "3")
+	want(t, r.stderr, "No statement expectations are declared for this company", "No expectations.")
 }
 
 func TestProDataDumps(t *testing.T) {

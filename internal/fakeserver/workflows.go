@@ -97,9 +97,7 @@ func (s *Server) renderUpload(req *request, kind uploadKind, u *Upload) record {
 			}
 		}
 		out["records_count"] = count
-		// The totals are in show only, as on the server; the index strips
-		// them (see statementIndexOnly).  reconciled is nil when there is
-		// nothing to reconcile against.
+		// reconciled is nil when there is nothing to reconcile against.
 		out["declared_total"], out["loaded_total"], out["reconciled"] = f["declared_total"], f["loaded_total"], nil
 		if !blank(f["declared_total"]) && !blank(f["loaded_total"]) {
 			var declared, loaded float64
@@ -132,16 +130,52 @@ func (s *Server) renderUpload(req *request, kind uploadKind, u *Upload) record {
 	return out
 }
 
-// statementIndexOnly strips from a rendered royalty statement what the
-// server's index does not carry: the declared and loaded totals and
-// whether they reconcile are in show only.
-func statementIndexOnly(kind uploadKind, out record) record {
-	if kind.segment == "royalty_statements" {
-		delete(out, "declared_total")
-		delete(out, "loaded_total")
-		delete(out, "reconciled")
+// detect is POST royalty_statements/detect: the statement sniffer, which
+// says which royalty source a file's head looks like, every field nil
+// when it recognises nothing.  The fake knows a PRO's statement by its
+// abbreviation in the head.
+func (s *Server) detect(req *request) {
+	if req.r.Method != http.MethodPost {
+		routingError(req.w)
+		return
 	}
-	return out
+	if !req.authorize(Editor) {
+		return
+	}
+	head := string(req.file)
+	if head == "" {
+		head = str(req.params["head"])
+	}
+	out := record{"format": nil, "pro_abbreviation": nil, "royalty_source_id": nil, "royalty_source_name": nil}
+	for _, source := range s.Reference["royalty_sources"] {
+		if strings.Contains(head, str(source["pro"])) {
+			out["format"] = strings.ToLower(str(source["pro"])) + "_csv"
+			out["pro_abbreviation"], out["royalty_source_id"], out["royalty_source_name"] = source["pro"], source["id"], source["name"]
+			break
+		}
+	}
+	writeJSON(req.w, http.StatusOK, out)
+}
+
+// statementCoverage is GET statement_coverage: the expectations, with a
+// note when there are none.
+func (s *Server) statementCoverage(req *request, rest []string) {
+	if len(rest) > 0 || req.r.Method != http.MethodGet {
+		routingError(req.w)
+		return
+	}
+	if !req.authorize(Viewer) {
+		return
+	}
+	expectations := req.company.Coverage
+	if expectations == nil {
+		expectations = []record{}
+	}
+	out := record{"expectations": expectations}
+	if len(expectations) == 0 {
+		out["note"] = "No statement expectations are declared for this company. They are managed in the admin (or seeded from imported statements with statement_coverage:seed_expectations)."
+	}
+	writeJSON(req.w, http.StatusOK, out)
 }
 
 func (s *Server) uploads(req *request, rest []string, kind uploadKind, list *[]*Upload) {
@@ -154,7 +188,7 @@ func (s *Server) uploads(req *request, rest []string, kind uploadKind, list *[]*
 		case http.MethodGet:
 			var out []record
 			for i := len(*list) - 1; i >= 0; i-- {
-				out = append(out, statementIndexOnly(kind, s.renderUpload(req, kind, (*list)[i])))
+				out = append(out, s.renderUpload(req, kind, (*list)[i]))
 			}
 			page, pagination := paginate(req.r, out, 0)
 			writeJSON(req.w, http.StatusOK, record{kind.segment: page, "pagination": pagination})
@@ -209,6 +243,10 @@ func (s *Server) uploads(req *request, rest []string, kind uploadKind, list *[]*
 		return
 	}
 
+	if kind.segment == "royalty_statements" && rest[0] == "detect" && len(rest) == 1 {
+		s.detect(req)
+		return
+	}
 	var u *Upload
 	index := -1
 	for i, candidate := range *list {
@@ -331,6 +369,58 @@ func (s *Server) streamers(req *request, u *Upload) {
 	writeJSON(req.w, http.StatusOK, record{"id": u.Fields["id"], "total_rows": totalRows, "matched_rows": matchedRows, "total_amount": "15.5", "matched_amount": "12.5", "streamers": rows})
 }
 
+// recordCategories is RawRoyaltyRecord's record_category enum.
+var recordCategories = map[string]bool{"streaming_av": true, "audio_streaming": true, "tv": true, "radio": true, "cinema": true, "live": true, "general": true, "mechanical": true, "levy": true, "adjustment": true, "other": true}
+
+// fullIngestFilters are the q[...] filters of the full-ingest axes, as
+// RawRoyaltyRecord.search_filtered has them: a category or flag value it
+// does not know matches nothing, never everything.
+func fullIngestFilters(r *http.Request, list []record) []record {
+	query := r.URL.Query()
+	keep := func(test func(record) bool) {
+		var kept []record
+		for _, item := range list {
+			if test(item) {
+				kept = append(kept, item)
+			}
+		}
+		list = kept
+	}
+	if category := query.Get("q[record_category]"); category != "" {
+		keep(func(item record) bool { return recordCategories[category] && str(item["record_category"]) == category })
+	}
+	for _, flag := range []string{"flow_through", "ledger_only"} {
+		if wanted := strings.ToLower(query.Get("q[" + flag + "]")); wanted != "" {
+			value, known := map[string]bool{"1": true, "true": true, "0": false, "false": false}[wanted]
+			keep(func(item record) bool { return known && item[flag] == value })
+		}
+	}
+	if account := strings.TrimSpace(query.Get("q[owner_account]")); account != "" {
+		keep(func(item record) bool { return str(item["owner_account"]) == account })
+	}
+	if period := strings.ToUpper(strings.TrimSpace(query.Get("q[payment_period]"))); period != "" {
+		var year, quarter, month int
+		switch {
+		case len(period) == 4:
+			fmt.Sscanf(period, "%4d", &year)
+			keep(func(item record) bool { return mustInt(item["payment_year"]) == int64(year) })
+		case len(period) == 6 && period[4] == 'Q':
+			fmt.Sscanf(period, "%4dQ%1d", &year, &quarter)
+			keep(func(item record) bool {
+				return mustInt(item["payment_year"]) == int64(year) && item["payment_quarter"] != nil && mustInt(item["payment_quarter"]) == int64(quarter)
+			})
+		case len(period) == 7 && period[4] == '-':
+			fmt.Sscanf(period, "%4d-%2d", &year, &month)
+			keep(func(item record) bool {
+				return mustInt(item["payment_year"]) == int64(year) && item["payment_month"] != nil && mustInt(item["payment_month"]) == int64(month)
+			})
+		default:
+			list = nil
+		}
+	}
+	return list
+}
+
 func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Upload) {
 	if !req.authorize(Viewer) || req.r.Method != http.MethodGet {
 		return
@@ -349,6 +439,7 @@ func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Uploa
 		out := copyRecord(r)
 		delete(out, "streamer_id")
 		delete(out, "uses")
+		delete(out, "owner_account")
 		if !detail {
 			for _, key := range []string{"deduction_amount", "tax_amount", "ledger_only", "payment_year", "payment_quarter", "payment_month", "owner_name", "ipi_number", "owner_category"} {
 				delete(out, key)
@@ -359,6 +450,7 @@ func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Uploa
 	}
 	if len(rest) == 0 {
 		list = filterQ(req.r, list, map[string][]string{"title": {"work_title"}, "iswc": {"iswc"}, "work_code": {"work_code"}, "streamer_name": {"streamer_name"}, "territory_code": {"territory_code"}})
+		list = fullIngestFilters(req.r, list)
 		if req.r.URL.Query().Get("q[has_issues]") == "1" {
 			var kept []record
 			for _, r := range list {

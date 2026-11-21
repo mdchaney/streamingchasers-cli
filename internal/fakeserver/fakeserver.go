@@ -81,6 +81,8 @@ type Company struct {
 	RoyaltyStatements []*Upload
 	ProDataDumps      []*Upload
 	RawRoyaltyRecords []record
+	// Coverage is the statement coverage report's expectations.
+	Coverage []record
 
 	// Unpaid are the claimable broadcasts_pros_sales rows, by PRO ID.
 	Unpaid      map[int64][]record
@@ -337,8 +339,12 @@ func (s *Server) seed() {
 			File:   []byte("line,amount\n1,12.50\n"), Name: "ascap-2025q4.csv", Polls: 99,
 		}},
 		RawRoyaltyRecords: []record{
-			{"id": 9001, "royalty_statement_id": 31, "line_number": 1, "work_title": "Drunken Daisy", "iswc": "T-123456789-0", "work_code": "123456789", "series_title": nil, "episode_title": nil, "usage_start_date": "2025-10-01", "usage_end_date": "2025-12-31", "net_amount": "12.50", "gross_amount": "13.00", "deduction_amount": "0.50", "tax_amount": "0.00", "currency": "USD", "record_category": "streaming_av", "flow_through": false, "ledger_only": false, "payment_year": 2025, "payment_quarter": 4, "payment_month": nil, "owner_name": "Frivolous Music", "ipi_number": "123456789", "owner_category": "publisher", "territory_code": "US", "streamer_name": "Netflix", "channel_name": nil, "is_ignored": false, "has_issues": false, "streamer_id": 1, "uses": 3},
-			{"id": 9002, "royalty_statement_id": 31, "line_number": 2, "work_title": "Unknown Tune", "iswc": nil, "work_code": "999", "series_title": "Big Series", "episode_title": "Pilot", "usage_start_date": "2025-11-01", "usage_end_date": "2025-11-30", "net_amount": "3.00", "gross_amount": "3.00", "deduction_amount": "0.00", "tax_amount": "0.00", "currency": "USD", "record_category": "tv", "flow_through": true, "ledger_only": false, "payment_year": 2025, "payment_quarter": 4, "payment_month": nil, "owner_name": nil, "ipi_number": nil, "owner_category": nil, "territory_code": "US", "streamer_name": "Hulu Plus", "channel_name": nil, "is_ignored": false, "has_issues": true, "streamer_id": nil, "uses": 1},
+			{"id": 9001, "royalty_statement_id": 31, "line_number": 1, "work_title": "Drunken Daisy", "iswc": "T-123456789-0", "work_code": "123456789", "series_title": nil, "episode_title": nil, "usage_start_date": "2025-10-01", "usage_end_date": "2025-12-31", "net_amount": "12.50", "gross_amount": "13.00", "deduction_amount": "0.50", "tax_amount": "0.00", "currency": "USD", "record_category": "streaming_av", "flow_through": false, "ledger_only": false, "payment_year": 2025, "payment_quarter": 4, "payment_month": nil, "owner_account": "871486996", "owner_name": "Frivolous Music", "ipi_number": "123456789", "owner_category": "publisher", "territory_code": "US", "streamer_name": "Netflix", "channel_name": nil, "is_ignored": false, "has_issues": false, "streamer_id": 1, "uses": 3},
+			{"id": 9002, "royalty_statement_id": 31, "line_number": 2, "work_title": "Unknown Tune", "iswc": nil, "work_code": "999", "series_title": "Big Series", "episode_title": "Pilot", "usage_start_date": "2025-11-01", "usage_end_date": "2025-11-30", "net_amount": "3.00", "gross_amount": "3.00", "deduction_amount": "0.00", "tax_amount": "0.00", "currency": "USD", "record_category": "tv", "flow_through": true, "ledger_only": false, "payment_year": 2025, "payment_quarter": 4, "payment_month": nil, "owner_account": nil, "owner_name": nil, "ipi_number": nil, "owner_category": nil, "territory_code": "US", "streamer_name": "Hulu Plus", "channel_name": nil, "is_ignored": false, "has_issues": true, "streamer_id": nil, "uses": 1},
+		},
+		Coverage: []record{
+			{"royalty_source": "ASCAP Domestic", "pro": "ASCAP", "owner_account": "871486996", "owner_label": "Frivolous Music (871486996)", "cadence": "quarterly", "first_expected_period": "2025Q1", "lag_days": 45, "active": true, "missing_periods": []any{"2025Q2", "2025Q3"}, "covered_periods": []any{"2025Q1", "2025Q4"}},
+			{"royalty_source": "BMI", "pro": "BMI", "owner_account": nil, "owner_label": "BMI, all accounts", "cadence": "quarterly", "first_expected_period": "2025Q3", "lag_days": 60, "active": true, "missing_periods": []any{}, "covered_periods": []any{"2025Q3", "2025Q4"}, "declared_periods": record{"2025Q3": record{"declared": 10.0, "loaded": 9.0, "reconciles": false}, "2025Q4": record{"declared": 15.5, "loaded": 15.5, "reconciles": true}}},
 		},
 	}
 	private := &Company{

@@ -19,7 +19,7 @@ was addressed on the application's `mdc` branch (commits `b871f06`,
 | 7 | `auth_token` scoping, `mark_sent=0` | `account token` says when it needs `--admin`; `batches csv --no-mark-sent` |
 | + | The version handshake (new, from [rails-to-cli-instructions.md](rails-to-cli-instructions.md)) | Sends `X-Client-API-Version`, reads `X-API-Version-Status`; `version` shows both; errors against an older server say so |
 | + | A claims paid report (API 1.6.0). It is collection-level, `broadcast_delivery_batches/paid_report`, rather than per batch, because a placement claimed on two sheets is one row; agreed, and no per-batch route is wanted | `batches paid-report [--pro X] [--sheet ID]`; `--sheet` filters the rows client-side |
-| + | The full-ingest and statement-coverage fields of 2 to 5 November 2026, which reached the API views without a spec change, so the API is still 1.6.0 | `royalty-records` shows NET and CATEGORY (flow-through marked); `royalty-statements get` the declared and loaded totals and whether they reconcile. [Section 8](#8-since-api-160-asked-6-november-2026-not-yet-answered) asks for what the CLI cannot do from here |
+| + | The full-ingest and statement-coverage fields of 2 to 5 November 2026, and the retired CWR destinations of 20 November, which reached the API views without a spec change; [section 8](#8-since-api-160-asked-6-november-2026-answered-20-november-2026-in-api-170) asked for the rest, answered in API 1.7.0 (`f10bce0`) | `royalty-records` shows NET and CATEGORY (flow-through marked) and filters with `--category`, `--flow-through`, `--ledger-only`, `--owner-account`, `--period`; `royalty-statements list` shows the declared and loaded totals and whether they reconcile; `royalty-statements coverage [--missing]`; `royalty-statements create` without `--source` asks `detect`; `cwr destinations` and connections show a retired destination |
 
 The CLI has still **not been run against the application itself**; the
 section at the end says what to try first. What follows is the request
@@ -142,7 +142,18 @@ lists them" for now.
 - `royalty_statements` has no `destroy`; the spec agrees. Noted in case
   that is not intentional.
 
-## 8. Since API 1.6.0 (asked 6 November 2026, not yet answered)
+## 8. Since API 1.6.0 (asked 6 November 2026, answered 20 November 2026 in API 1.7.0)
+
+**Answered**, every item, in `f10bce0` "API 1.7.0: coverage endpoint,
+statement totals, record filters", and the CLI followed the same day:
+`royalty-statements coverage`, the totals in `royalty-statements list`,
+the five record filters, the spec and the bump, and `detect` behind
+`royalty-statements create` without `--source`. One thing noticed in
+following: `q[owner_account]` filters raw royalty records but no view
+serves `owner_account`, so a user can filter on an account they cannot
+see on a line; `owner_name` is served. Showing `owner_account` in the
+record show, at least, would close that. What follows is the request as
+it was made.
 
 The full royalty ingest (`docs/royalty-full-ingest-plan.md`) and statement
 coverage (`docs/statement-coverage-plan.md`) changed what the API serves

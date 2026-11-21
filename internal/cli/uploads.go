@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -122,9 +124,14 @@ can be run again with 'reprocess'. 'streamers' shows the streamer and
 channel names a statement reported and which were recognised, and
 'records' its lines.
 
-'get' shows the total a statement declares it paid, the total loaded from
+Each statement shows the total it declares it paid, the total loaded from
 its lines, and whether the two reconcile; a statement whose format
-declares no total has nothing to reconcile, and says neither.`,
+declares no total has nothing to reconcile, and says neither. 'coverage'
+is the other way round: which statements the company should have had,
+and which have not come.
+
+Without --source, create sends the first few kilobytes of the file for
+the server to recognise which PRO's statement it is.`,
 		columns: append([]output.Column{
 			{Header: "ID", Key: "id"},
 			{Header: "SOURCE", Key: "source_name", Max: 25},
@@ -133,6 +140,9 @@ declares no total has nothing to reconcile, and says neither.`,
 			{Header: "FROM", Key: "starts_at"},
 			{Header: "TO", Key: "ends_at"},
 			{Header: "LINES", Key: "records_count"},
+			{Header: "LOADED", Key: "loaded_total"},
+			{Header: "DECLARED", Key: "declared_total"},
+			{Header: "RECONCILED", Value: yesNo("reconciled")},
 		}, statusColumns...),
 		fields: []field{
 			{flag: "format", key: "royalty_file_format_id", kind: kindInt, usage: "ID of the file's format, one of the source's"},
@@ -141,9 +151,11 @@ declares no total has nothing to reconcile, and says neither.`,
 		sourceField: "royalty_source_id",
 		noDelete:    true,
 		downloads:   []download{{"download", "Download the statement as it was uploaded", "csv_file", "statement.csv"}},
-		example: `  streamingchasers royalty-statements create --file ascap-2026q1.csv --source ASCAP --wait
+		example: `  streamingchasers royalty-statements create --file ascap-2026q1.csv --wait
+  streamingchasers royalty-statements create --file ascap-2026q1.csv --source ASCAP --wait
   streamingchasers royalty-statements streamers 31
-  streamingchasers royalty-statements reprocess 31 --wait`,
+  streamingchasers royalty-statements reprocess 31 --wait
+  streamingchasers royalty-statements coverage --missing`,
 	}
 }
 
@@ -211,7 +223,7 @@ func (a *App) newUploadCmd(u *upload) *cobra.Command {
 	case "sales-uploads":
 		cmd.AddCommand(a.newUploadSubListCmd("sales ID", "List the sales an upload created", u.segment, "sales", "sales", salesResource().columns))
 	case "royalty-statements":
-		cmd.AddCommand(a.newReprocessCmd(u, r), a.newStreamersCmd(u),
+		cmd.AddCommand(a.newReprocessCmd(u, r), a.newStreamersCmd(u), a.newCoverageCmd(),
 			a.newUploadSubListCmd("records ID", "List the lines of a statement", u.segment, "raw_royalty_records", "lines", royaltyRecordColumns(), royaltyRecordFilters()...))
 	}
 	return cmd
@@ -291,19 +303,21 @@ failure cannot load the file twice: the server answers a repeat with the
 				}
 				fields[u.singular+"["+u.proField+"]"] = strconv.FormatInt(id, 10)
 			}
+			collection, err := a.collection(cmd.Context(), s, r)
+			if err != nil {
+				return err
+			}
 			if u.sourceField != "" {
-				if opts.source == "" {
-					return usagef("--source is required; 'streamingchasers royalty-sources list' shows them")
+				var id int64
+				if opts.source != "" {
+					id, err = s.royaltySourceID(cmd.Context(), opts.source)
+				} else {
+					id, err = a.detectSource(cmd.Context(), s, collection, filename, data)
 				}
-				id, err := s.royaltySourceID(cmd.Context(), opts.source)
 				if err != nil {
 					return err
 				}
 				fields[u.singular+"["+u.sourceField+"]"] = strconv.FormatInt(id, 10)
-			}
-			collection, err := a.collection(cmd.Context(), s, r)
-			if err != nil {
-				return err
 			}
 			key := opts.key
 			if key == "" {
@@ -353,7 +367,7 @@ failure cannot load the file twice: the server answers a repeat with the
 		flags.StringVar(&opts.pro, "pro", "", usage)
 	}
 	if u.sourceField != "" {
-		flags.StringVar(&opts.source, "source", "", "the royalty source, by ID or name (required)")
+		flags.StringVar(&opts.source, "source", "", "the royalty source, by ID or name (default: what the server recognises the file as)")
 	}
 	flags.StringVar(&opts.key, "idempotency-key", "", "the key that makes a repeat of this request safe (default: a new one)")
 	flags.BoolVar(&opts.wait, "wait", false, "keep looking until the server has processed the file")
@@ -419,6 +433,169 @@ func (s *session) royaltySourceID(ctx context.Context, selected string) (int64, 
 		return 0, err
 	}
 	return recordID(record)
+}
+
+// detectHeadSize is how much of a statement file is sent for the server
+// to recognise it by.
+const detectHeadSize = 8 << 10
+
+// detectSource asks the server which royalty source a statement file is
+// from, by its first few kilobytes and its name.  It is a usage error
+// when the server does not recognise the file: --source must say.
+func (a *App) detectSource(ctx context.Context, s *session, collection, filename string, data []byte) (int64, error) {
+	head := data
+	if len(head) > detectHeadSize {
+		head = head[:detectHeadSize]
+	}
+	form := &api.Form{Fields: map[string]string{"filename": filename}, FileField: "head", Filename: filename, File: head}
+	resp, err := s.client.Do(ctx, api.Request{Method: http.MethodPost, Path: collection + "/detect", Form: form})
+	if err != nil {
+		return 0, err
+	}
+	result, err := output.ParseRecord(resp.Body)
+	if err != nil {
+		return 0, err
+	}
+	id, err := strconv.ParseInt(result.String("royalty_source_id"), 10, 64)
+	if err != nil {
+		return 0, usagef("--source is required: the server does not recognise %s as any PRO's statement; 'streamingchasers royalty-sources list' shows the sources", filename)
+	}
+	fmt.Fprintf(a.Err, "%s looks like a %s statement (%s).\n", filename, result.String("royalty_source_name"), result.String("format"))
+	return id, nil
+}
+
+// newCoverageCmd is 'royalty-statements coverage': which statements the
+// company should have had, and which have not come.
+func (a *App) newCoverageCmd() *cobra.Command {
+	var missing bool
+	cmd := &cobra.Command{
+		Use:   "coverage",
+		Short: "Which statement periods are in hand and which are missing, by PRO account",
+		Long: `Show, for every PRO account the company expects statements from, which
+distribution periods have a statement loaded and which are missing. The
+expectations themselves (the account, how often it pays, from when, and
+how long after a period its statement is due) are declared by Streaming
+Chasers; where a PRO's own account summaries are loaded, each period's
+declared total is checked against what the statements loaded.
+
+Periods are named by their grain: 2026-01, 2026Q1, 2026H1 or 2026. With
+--missing, the output is one row per missing period, the list to act
+on. -o json gives the whole report, each expectation with its covered,
+missing and declared periods.
+
+No expectations means coverage has not been set up for the company,
+which is not the same as nothing missing; the command says so.`,
+		Example: `  streamingchasers royalty-statements coverage
+  streamingchasers royalty-statements coverage --missing -o csv`,
+		Args: noArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			s, err := a.session()
+			if err != nil {
+				return err
+			}
+			path, err := s.companyPath(cmd.Context(), "statement_coverage")
+			if err != nil {
+				return err
+			}
+			resp, err := s.client.Get(cmd.Context(), path, nil)
+			if err != nil {
+				return err
+			}
+			if a.globals.output == output.JSON && !missing {
+				return output.WriteJSON(a.Out, resp.Body)
+			}
+			report, err := output.ParseRecord(resp.Body)
+			if err != nil {
+				return err
+			}
+			items, err := listOf(resp.Body, "expectations")
+			if err != nil {
+				return err
+			}
+			if note := report.String("note"); note != "" && a.globals.output == output.Table {
+				fmt.Fprintln(a.Err, note)
+			}
+			if missing {
+				return a.renderItems(missingPeriods(items), []output.Column{
+					{Header: "SOURCE", Key: "royalty_source", Max: 25},
+					{Header: "PRO", Key: "pro"},
+					{Header: "ACCOUNT", Value: ownerAccount, Max: 30},
+					{Header: "PERIOD", Key: "period"},
+				}, "missing periods")
+			}
+			return a.renderItems(items, []output.Column{
+				{Header: "SOURCE", Key: "royalty_source", Max: 25},
+				{Header: "PRO", Key: "pro"},
+				{Header: "ACCOUNT", Value: ownerAccount, Max: 30},
+				{Header: "CADENCE", Key: "cadence"},
+				{Header: "FROM", Key: "first_expected_period"},
+				{Header: "LAG", Key: "lag_days"},
+				{Header: "ACTIVE", Value: yesNo("active")},
+				{Header: "COVERED", Value: listLen("covered_periods")},
+				{Header: "UNRECONCILED", Value: unreconciled},
+				{Header: "MISSING", Key: "missing_periods", Max: 40},
+			}, "expectations")
+		},
+	}
+	cmd.Flags().BoolVar(&missing, "missing", false, "one row per missing period")
+	return cmd
+}
+
+// ownerAccount names the PRO account an expectation is for: its label,
+// or the account number when it has no label.
+func ownerAccount(r *output.Record) string {
+	if label := r.String("owner_label"); label != "" {
+		return label
+	}
+	return r.String("owner_account")
+}
+
+// listLen is how many items the list under key has.
+func listLen(key string) func(*output.Record) string {
+	return func(r *output.Record) string {
+		list, ok := r.Value(key).([]any)
+		if !ok {
+			return ""
+		}
+		return strconv.Itoa(len(list))
+	}
+}
+
+// unreconciled is how many of an expectation's declared periods do not
+// reconcile with what was loaded, or "" when nothing was declared.
+func unreconciled(r *output.Record) string {
+	declared, ok := r.Value("declared_periods").(*output.Record)
+	if !ok {
+		return ""
+	}
+	n := 0
+	for _, period := range declared.Keys() {
+		if entry, ok := declared.Value(period).(*output.Record); ok && entry.String("reconciles") != "true" {
+			n++
+		}
+	}
+	return strconv.Itoa(n)
+}
+
+// missingPeriods is one record per missing period of the expectations.
+func missingPeriods(items []json.RawMessage) []json.RawMessage {
+	var rows []json.RawMessage
+	for _, item := range items {
+		expectation, err := output.ParseRecord(item)
+		if err != nil {
+			continue
+		}
+		periods, _ := expectation.Value("missing_periods").([]any)
+		for _, period := range periods {
+			row := output.NewRecord()
+			for _, key := range []string{"royalty_source", "pro", "owner_account", "owner_label"} {
+				row.Set(key, expectation.Value(key))
+			}
+			row.Set("period", period)
+			rows = append(rows, mustJSON(row))
+		}
+	}
+	return rows
 }
 
 func (a *App) newReprocessCmd(u *upload, r *resource) *cobra.Command {

@@ -570,6 +570,11 @@ func royaltyRecordFilters() []filter {
 		{flag: "line", param: "q[line_number]", usage: "the line with this number"},
 		{flag: "matched", param: "q[matched]", usage: "matched_work, unmatched_work, matched_production or unmatched_production"},
 		{flag: "issues", param: "q[has_issues]", usage: "1 for lines with issues"},
+		{flag: "category", param: "q[record_category]", usage: "lines of this category of use: streaming_av, tv, mechanical, ..."},
+		{flag: "flow-through", param: "q[flow_through]", usage: "1 for flow-through lines, 0 for the rest"},
+		{flag: "ledger-only", param: "q[ledger_only]", usage: "1 for lines kept for accounting only, never evidence of a placement; 0 for the rest"},
+		{flag: "owner-account", param: "q[owner_account]", usage: "lines paid to this account number at the PRO"},
+		{flag: "period", param: "q[payment_period]", usage: "lines distributed in this period: 2026, 2026Q1 or 2026-01"},
 	}
 }
 

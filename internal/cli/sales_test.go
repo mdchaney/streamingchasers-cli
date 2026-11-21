@@ -63,6 +63,23 @@ func TestRoyaltyRecords(t *testing.T) {
 		t.Errorf("query = %q", req.Query)
 	}
 
+	// The full-ingest filters: a category, the two flags, the account and
+	// the distribution period at its own grain.
+	want(t, h.ok("royalty-records", "list", "--category", "tv").stdout, "9002")
+	unwanted(t, h.ok("royalty-records", "list", "--category", "tv").stdout, "9001")
+	if req := h.lastRequest("GET", "/api/v1/companies/2/raw_royalty_records"); !strings.Contains(req.Query, "q%5Brecord_category%5D=tv") {
+		t.Errorf("query = %q", req.Query)
+	}
+	want(t, h.ok("royalty-records", "list", "--category", "bogus").stderr, "No royalty records match.")
+	want(t, h.ok("royalty-records", "list", "--flow-through", "1").stdout, "9002")
+	unwanted(t, h.ok("royalty-records", "list", "--flow-through", "1").stdout, "9001")
+	want(t, h.ok("royalty-records", "list", "--ledger-only", "0").stdout, "9001", "9002")
+	want(t, h.ok("royalty-records", "list", "--owner-account", "871486996").stdout, "9001")
+	unwanted(t, h.ok("royalty-records", "list", "--owner-account", "871486996").stdout, "9002")
+	want(t, h.ok("royalty-records", "list", "--period", "2025Q4").stdout, "9001", "9002")
+	want(t, h.ok("royalty-records", "list", "--period", "2025").stdout, "9001", "9002")
+	want(t, h.ok("royalty-records", "list", "--period", "2025-11").stderr, "No royalty records match.")
+
 	// The list carries the net and gross amounts; the rest of the money,
 	// the distribution period and the interested parties are in get.
 	r = h.ok("royalty-records", "list", "-o", "json")

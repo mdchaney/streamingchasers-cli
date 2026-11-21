@@ -384,6 +384,8 @@ func (s *Server) companies(req *request, rest []string) {
 		s.uploads(req, rest[1:], uploadDump, &company.ProDataDumps)
 	case "raw_royalty_records":
 		s.rawRoyaltyRecords(req, rest[1:], nil)
+	case "statement_coverage":
+		s.statementCoverage(req, rest[1:])
 	case "pros":
 		s.claimsUnderPro(req, rest[1:])
 	case "broadcast_delivery_batches":

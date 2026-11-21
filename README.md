@@ -284,24 +284,38 @@ $ streamingchasers sales paid-csv --pro BMI --save-as bmi.csv  # one PRO's, a co
 
 ```console
 $ streamingchasers royalty-sources list
-$ streamingchasers royalty-statements create --file ascap-2026q1.csv --source "ASCAP Domestic" --wait
+$ streamingchasers royalty-statements create --file ascap-2026q1.csv --wait   # the server recognises the PRO
+$ streamingchasers royalty-statements create --file odd.csv --source "ASCAP Domestic" --wait
 $ streamingchasers royalty-statements streamers 31    # the names it reported, and which were recognised
 $ streamingchasers royalty-statements records 31 --issues 1
 $ streamingchasers royalty-statements reprocess 31 --wait
+$ streamingchasers royalty-statements coverage --missing   # the statements that have not come
 $ streamingchasers royalty-records list --matched unmatched_work --from 2026-01-01
+$ streamingchasers royalty-records list --category mechanical --period 2026Q1 --flow-through 0
 ```
 
 `royalty-statements streamers` is the match-quality check: the streamer
 and channel names the statement used, with the streamer each resolved
 to, unrecognised names first. `reprocess` runs a failed import again.
-`royalty-statements get` shows the total a statement declares it paid,
-the total loaded from its lines, and whether the two reconcile.
+Each statement shows the total it declares it paid, the total loaded
+from its lines, and whether the two reconcile. `create` without
+`--source` sends the first few kilobytes of the file for the server to
+recognise which PRO's statement it is, and says what it found.
+
+`royalty-statements coverage` is the other way round: for every PRO
+account the company expects statements from, which distribution periods
+have one loaded and which are missing, with `--missing` as the list to act
+on. The expectations are declared by Streaming Chasers; a company with
+none is told that coverage is not set up, which is not the same as
+nothing missing.
 
 A statement's lines show the net amount each paid and its category of use
 (`streaming_av`, `tv`, `mechanical`, ...), with flow-through lines marked:
 a foreign PRO's money passing through the statement, which the server
-leaves out of its totals. `royalty-records get` has the gross, the
-deductions and tax, the distribution period and the interested parties.
+leaves out of its totals. `--category`, `--flow-through`, `--ledger-only`,
+`--owner-account` and `--period` (`2026`, `2026Q1` or `2026-01`) filter
+on them. `royalty-records get` has the gross, the deductions and tax, the
+distribution period and the interested parties.
 
 ## Chasing and claiming
 
@@ -448,8 +462,8 @@ with every request, and the server says how the two stand:
 
 ```console
 $ streamingchasers version
-streamingchasers 1.0.0 (API 1.6.0)
-https://app.streamingchasers.com speaks API 1.6.0: the same as this program
+streamingchasers 1.0.0 (API 1.7.0)
+https://app.streamingchasers.com speaks API 1.7.0: the same as this program
 ```
 
 When the server is newer, every command ends with a note to upgrade. When
