@@ -19,6 +19,7 @@ was addressed on the application's `mdc` branch (commits `b871f06`,
 | 7 | `auth_token` scoping, `mark_sent=0` | `account token` says when it needs `--admin`; `batches csv --no-mark-sent` |
 | + | The version handshake (new, from [rails-to-cli-instructions.md](rails-to-cli-instructions.md)) | Sends `X-Client-API-Version`, reads `X-API-Version-Status`; `version` shows both; errors against an older server say so |
 | + | A claims paid report (API 1.6.0). It is collection-level, `broadcast_delivery_batches/paid_report`, rather than per batch, because a placement claimed on two sheets is one row; agreed, and no per-batch route is wanted | `batches paid-report [--pro X] [--sheet ID]`; `--sheet` filters the rows client-side |
+| + | The full-ingest and statement-coverage fields of 2 to 5 November 2026, which reached the API views without a spec change, so the API is still 1.6.0 | `royalty-records` shows NET and CATEGORY (flow-through marked); `royalty-statements get` the declared and loaded totals and whether they reconcile. [Section 8](#8-since-api-160-asked-6-november-2026-not-yet-answered) asks for what the CLI cannot do from here |
 
 The CLI has still **not been run against the application itself**; the
 section at the end says what to try first. What follows is the request
@@ -140,6 +141,47 @@ lists them" for now.
   download, check, then mark.
 - `royalty_statements` has no `destroy`; the spec agrees. Noted in case
   that is not intentional.
+
+## 8. Since API 1.6.0 (asked 6 November 2026, not yet answered)
+
+The full royalty ingest (`docs/royalty-full-ingest-plan.md`) and statement
+coverage (`docs/statement-coverage-plan.md`) changed what the API serves
+without touching `docs/openapi.yaml`, so the version test did not fire
+and the API is still 1.6.0. The CLI followed the jbuilder views on 6
+November 2026: `raw_royalty_records` index now carries `net_amount`,
+`gross_amount`, `record_category` and `flow_through`, show the deductions,
+tax, distribution period and interested-party fields as well;
+`royalty_statements` show carries `declared_total`, `loaded_total` and
+`reconciled`; the `streamers` breakdown sums `net_amount`. Asked for, in
+order of use to a CLI user:
+
+- **Say so in the spec, and bump.** The `OK` responses say nothing of
+  the fields, so a view can change under a client with no version
+  moving. Describe the record and statement shapes (or at least note
+  the net/gross change and the categories in the description) and bump
+  `info.version` to 1.7.0, so a 1.6.0 client is told it is outdated.
+- **Statement coverage over the API.** The plan's "MCP/API endpoint
+  exposing the same join" is done for MCP (`statement_coverage`) and the
+  web (`/my/companies/:id/statement_coverage`), not the API. Asked for:
+  `GET /api/v1/companies/:id/statement_coverage` serving what the MCP
+  tool serves (`expectations`, each with `royalty_source`, `pro`,
+  `owner_account`, `owner_label`, `cadence`, `expected_months`,
+  `first_expected_period`, `lag_days`, `active`, `missing_periods`,
+  `covered_periods`, and the `note` when none are declared). The CLI
+  will add `royalty-statements coverage [--missing]` against it.
+- **Totals in the statements index.** `declared_total`, `loaded_total`
+  and `reconciled` are in show only; in the index they would let
+  `royalty-statements list` show which statements did not reconcile
+  without a request per statement.
+- **Filters for the new axes.** `RawRoyaltyRecord.search_filtered` has
+  no `q[record_category]`, `q[flow_through]`, `q[ledger_only]`,
+  `q[owner_account]` or distribution-period filter; the CLI would expose
+  each as a flag. Until then the category and flow-through are shown but
+  cannot be filtered on.
+- **`detect` for statements**: `POST /my/.../royalty_statements/detect`
+  (the sniffer behind the bulk dropzone) would let `royalty-statements
+  create` go without `--source` when the file says which PRO it is from.
+  Only if cheap.
 
 ## What to try first against the application
 

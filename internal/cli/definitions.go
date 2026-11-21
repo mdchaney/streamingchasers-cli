@@ -503,6 +503,15 @@ func royaltyRecordsResource() *resource {
 Each is a line as the PRO reported it, with the work and production it was
 matched to, if any.
 
+NET is what the line paid after deductions and tax; the gross, the
+deductions, the tax, the distribution period and the interested parties
+are in 'get' and in -o json. CATEGORY is the kind of use the line
+reports: streaming_av, audio_streaming, tv, radio, cinema, live, general,
+mechanical, levy, adjustment or other, blank for a line stored before the
+server kept every kind. A line marked flow-through is a foreign PRO's
+money passing through the statement, which the server leaves out of its
+totals.
+
 Narrow the list with the filters; --matched takes matched_work,
 unmatched_work, matched_production or unmatched_production. For one
 statement's lines, see 'streamingchasers royalty-statements records'.`,
@@ -523,10 +532,24 @@ func royaltyRecordColumns() []output.Column {
 		{Header: "CODE", Key: "work_code"},
 		{Header: "STREAMER", Key: "streamer_name", Max: 20},
 		{Header: "FROM", Key: "usage_start_date"},
-		{Header: "AMOUNT", Key: "gross_amount"},
+		{Header: "NET", Key: "net_amount"},
 		{Header: "CUR", Key: "currency"},
+		{Header: "CATEGORY", Value: recordCategory},
 		{Header: "ISSUES", Value: yesNo("has_issues")},
 	}
+}
+
+// recordCategory is a royalty record's category of use, noting a
+// flow-through line: a foreign PRO's money passing through the statement.
+func recordCategory(r *output.Record) string {
+	category := r.String("record_category")
+	if r.String("flow_through") != "true" {
+		return category
+	}
+	if category == "" {
+		return "flow-through"
+	}
+	return category + ", flow-through"
 }
 
 func royaltyRecordFilters() []filter {

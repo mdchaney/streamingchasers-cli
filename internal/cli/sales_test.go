@@ -54,12 +54,19 @@ func TestPaidSalesCSV(t *testing.T) {
 func TestRoyaltyRecords(t *testing.T) {
 	h := signedIn(t)
 	r := h.ok("royalty-records", "list")
-	want(t, r.stdout, "STATEMENT", "LINE", "9001", "Drunken Daisy", "Netflix", "12.50", "9002", "Unknown Tune", "yes")
+	want(t, r.stdout, "STATEMENT", "LINE", "NET", "CATEGORY", "9001", "Drunken Daisy", "Netflix", "12.50", "streaming_av", "9002", "Unknown Tune", "tv, flow-through", "yes")
+	unwanted(t, r.stdout, "13.00")
 	want(t, h.ok("royalty-records", "list", "--issues", "1").stdout, "9002")
 	unwanted(t, h.ok("royalty-records", "list", "--issues", "1").stdout, "9001")
 	want(t, h.ok("royalty-records", "list", "--streamer", "hulu").stdout, "9002")
-	want(t, h.ok("royalty-records", "get", "9001").stdout, "iswc:", "T-123456789-0")
 	if req := h.lastRequest("GET", "/api/v1/companies/2/raw_royalty_records"); !strings.Contains(req.Query, "q%5Bstreamer_name%5D=hulu") {
 		t.Errorf("query = %q", req.Query)
 	}
+
+	// The list carries the net and gross amounts; the rest of the money,
+	// the distribution period and the interested parties are in get.
+	r = h.ok("royalty-records", "list", "-o", "json")
+	want(t, r.stdout, `"net_amount": "12.50"`, `"gross_amount": "13.00"`, `"record_category": "streaming_av"`, `"flow_through": true`)
+	unwanted(t, r.stdout, "deduction_amount", "owner_name", "payment_year")
+	want(t, h.ok("royalty-records", "get", "9001").stdout, "iswc:", "T-123456789-0", "net_amount:", "deduction_amount:", "0.50", "payment_year:", "2025", "owner_name:", "Frivolous Music")
 }

@@ -120,7 +120,11 @@ The status is pending until the server is done, then completed or
 failed. --wait keeps looking until it is done. A statement that failed
 can be run again with 'reprocess'. 'streamers' shows the streamer and
 channel names a statement reported and which were recognised, and
-'records' its lines.`,
+'records' its lines.
+
+'get' shows the total a statement declares it paid, the total loaded from
+its lines, and whether the two reconcile; a statement whose format
+declares no total has nothing to reconcile, and says neither.`,
 		columns: append([]output.Column{
 			{Header: "ID", Key: "id"},
 			{Header: "SOURCE", Key: "source_name", Max: 25},
@@ -459,7 +463,7 @@ func (a *App) newStreamersCmd(u *upload) *cobra.Command {
 		Use:   "streamers ID",
 		Short: "Show the streamer and channel names a statement reported, and which were recognised",
 		Long: `Show every distinct streamer and channel name a statement reported, with
-the streamer each was matched to, and how many lines and how much money
+the streamer each was matched to, and how many lines and how much net money
 ride on each. Names that were not recognised come first.`,
 		Args: exactArgs("ID"),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -112,6 +112,9 @@ func TestRoyaltyStatements(t *testing.T) {
 		t.Errorf("unmatched names should come first:\n%s", r.stdout)
 	}
 
+	// The totals and whether they reconcile are in get, not the list.
+	want(t, h.ok("royalty-statements", "get", "31").stdout, "declared_total:", "15.50", "loaded_total:", "reconciled:", "true")
+	unwanted(t, h.ok("royalty-statements", "list", "-o", "json").stdout, "declared_total", "reconciled")
 	want(t, h.ok("royalty-statements", "records", "31").stdout, "9001", "9002")
 	want(t, h.ok("royalty-statements", "records", "31", "--issues", "1").stdout, "9002")
 	want(t, h.ok("royalty-statements", "download", "31").stdout, "line,amount")

@@ -2,6 +2,7 @@ package fakeserver
 
 import (
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -96,6 +97,17 @@ func (s *Server) renderUpload(req *request, kind uploadKind, u *Upload) record {
 			}
 		}
 		out["records_count"] = count
+		// The totals are in show only, as on the server; the index strips
+		// them (see statementIndexOnly).  reconciled is nil when there is
+		// nothing to reconcile against.
+		out["declared_total"], out["loaded_total"], out["reconciled"] = f["declared_total"], f["loaded_total"], nil
+		if !blank(f["declared_total"]) && !blank(f["loaded_total"]) {
+			var declared, loaded float64
+			fmt.Sscan(str(f["declared_total"]), &declared)
+			fmt.Sscan(str(f["loaded_total"]), &loaded)
+			tolerance := math.Max(0.05, float64(count)*0.001)
+			out["reconciled"] = math.Abs(loaded-declared) <= tolerance
+		}
 		for _, source := range s.Reference["royalty_sources"] {
 			if mustInt(source["id"]) == mustInt(f["royalty_source_id"]) {
 				out["source_name"] = source["name"]
@@ -120,6 +132,18 @@ func (s *Server) renderUpload(req *request, kind uploadKind, u *Upload) record {
 	return out
 }
 
+// statementIndexOnly strips from a rendered royalty statement what the
+// server's index does not carry: the declared and loaded totals and
+// whether they reconcile are in show only.
+func statementIndexOnly(kind uploadKind, out record) record {
+	if kind.segment == "royalty_statements" {
+		delete(out, "declared_total")
+		delete(out, "loaded_total")
+		delete(out, "reconciled")
+	}
+	return out
+}
+
 func (s *Server) uploads(req *request, rest []string, kind uploadKind, list *[]*Upload) {
 	if !req.authorize(Viewer) {
 		return
@@ -130,7 +154,7 @@ func (s *Server) uploads(req *request, rest []string, kind uploadKind, list *[]*
 		case http.MethodGet:
 			var out []record
 			for i := len(*list) - 1; i >= 0; i-- {
-				out = append(out, s.renderUpload(req, kind, (*list)[i]))
+				out = append(out, statementIndexOnly(kind, s.renderUpload(req, kind, (*list)[i])))
 			}
 			page, pagination := paginate(req.r, out, 0)
 			writeJSON(req.w, http.StatusOK, record{kind.segment: page, "pagination": pagination})
@@ -289,7 +313,7 @@ func (s *Server) streamers(req *request, u *Upload) {
 		}
 		group["rows"] = group["rows"].(int) + 1
 		var amount float64
-		fmt.Sscan(str(r["gross_amount"]), &amount)
+		fmt.Sscan(str(r["net_amount"]), &amount)
 		group["amount"] = group["amount"].(float64) + amount
 		group["uses"] = group["uses"].(int) + int(mustInt(r["uses"]))
 		totalRows++
@@ -318,10 +342,18 @@ func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Uploa
 			list = append(list, r)
 		}
 	}
-	render := func(r record) record {
+	// The index carries a line's net and gross amounts, its category and
+	// whether it is flow-through; the rest of the money, the distribution
+	// period and the interested parties are in show only, as on the server.
+	render := func(r record, detail bool) record {
 		out := copyRecord(r)
 		delete(out, "streamer_id")
 		delete(out, "uses")
+		if !detail {
+			for _, key := range []string{"deduction_amount", "tax_amount", "ledger_only", "payment_year", "payment_quarter", "payment_month", "owner_name", "ipi_number", "owner_category"} {
+				delete(out, key)
+			}
+		}
 		out["url"] = fmt.Sprintf("%s/companies/%d/royalty_statements/%v/raw_royalty_records/%v", req.base, company.ID, r["royalty_statement_id"], r["id"])
 		return out
 	}
@@ -338,7 +370,7 @@ func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Uploa
 		}
 		var out []record
 		for _, r := range list {
-			out = append(out, render(r))
+			out = append(out, render(r, false))
 		}
 		page, pagination := paginate(req.r, out, 0)
 		writeJSON(req.w, http.StatusOK, record{"raw_royalty_records": page, "pagination": pagination})
@@ -346,7 +378,7 @@ func (s *Server) rawRoyaltyRecords(req *request, rest []string, statement *Uploa
 	}
 	for _, r := range list {
 		if str(r["id"]) == rest[0] && len(rest) == 1 {
-			writeJSON(req.w, http.StatusOK, render(r))
+			writeJSON(req.w, http.StatusOK, render(r, true))
 			return
 		}
 	}

@@ -294,6 +294,14 @@ $ streamingchasers royalty-records list --matched unmatched_work --from 2026-01-
 `royalty-statements streamers` is the match-quality check: the streamer
 and channel names the statement used, with the streamer each resolved
 to, unrecognised names first. `reprocess` runs a failed import again.
+`royalty-statements get` shows the total a statement declares it paid,
+the total loaded from its lines, and whether the two reconcile.
+
+A statement's lines show the net amount each paid and its category of use
+(`streaming_av`, `tv`, `mechanical`, ...), with flow-through lines marked:
+a foreign PRO's money passing through the statement, which the server
+leaves out of its totals. `royalty-records get` has the gross, the
+deductions and tax, the distribution period and the interested parties.
 
 ## Chasing and claiming
 
